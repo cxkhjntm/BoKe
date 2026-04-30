@@ -14,6 +14,16 @@
   --max-width: 960px;
   --font: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Status badge tokens */
+  --status-queued-bg: #dbeafe;
+  --status-queued-text: #1e40af;
+  --status-processing-bg: #fef9c3;
+  --status-processing-text: #854d0e;
+  --status-ready-bg: #dcfce7;
+  --status-ready-text: #166534;
+  --status-error-bg: #fee2e2;
+  --status-error-text: #991b1b;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -103,9 +113,10 @@ a:hover { text-decoration: underline; }
   font-size: 0.75rem;
   font-weight: 500;
 }
-.badge-ready { background: #dcfce7; color: #166534; }
-.badge-processing { background: #fef9c3; color: #854d0e; }
-.badge-error { background: #fee2e2; color: #991b1b; }
+.badge-queued { background: var(--status-queued-bg); color: var(--status-queued-text); }
+.badge-processing { background: var(--status-processing-bg); color: var(--status-processing-text); }
+.badge-ready { background: var(--status-ready-bg); color: var(--status-ready-text); }
+.badge-error { background: var(--status-error-bg); color: var(--status-error-text); }
 
 /* Page header */
 .page-header {

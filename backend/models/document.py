@@ -12,6 +12,10 @@ class Document(Base):
             "file_type IN ('pdf','docx','md','png','jpg','jpeg')",
             name="chk_file_type",
         ),
+        CheckConstraint(
+            "status IN ('queued','processing','ready','error')",
+            name="chk_document_status",
+        ),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)

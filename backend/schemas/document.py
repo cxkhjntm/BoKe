@@ -1,6 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+DocumentStatus = Literal["queued", "processing", "ready", "error"]
 
 
 class DocumentOut(BaseModel):
@@ -12,7 +15,7 @@ class DocumentOut(BaseModel):
     file_path: str | None = None
     thumbnail_path: str | None = None
     content_text: str | None = None
-    status: str
+    status: DocumentStatus
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime
@@ -27,7 +30,7 @@ class DocumentListItem(BaseModel):
     file_type: str
     file_size: int
     thumbnail_path: str | None = None
-    status: str
+    status: DocumentStatus
     error_message: str | None = None
     created_at: datetime
     updated_at: datetime

@@ -30,7 +30,11 @@
     <div v-else-if="error" class="alert alert-error">{{ error }}</div>
     <div v-else-if="doc" class="reader-content card">
       <!-- Status messages -->
-      <div v-if="doc.status === 'processing'" class="reader-status">
+      <div v-if="doc.status === 'queued'" class="reader-status">
+        <span class="spinner"></span>
+        <span>Document is queued for processing...</span>
+      </div>
+      <div v-else-if="doc.status === 'processing'" class="reader-status">
         <span class="spinner"></span>
         <span>Document is being processed...</span>
       </div>
@@ -169,7 +173,7 @@ function formatSize(bytes) {
 }
 
 function statusLabel(s) {
-  return { ready: 'Ready', processing: 'Processing', error: 'Error' }[s] || s
+  return { queued: 'Queued', processing: 'Processing', ready: 'Ready', error: 'Error' }[s] || s
 }
 
 onMounted(fetchDoc)
@@ -189,13 +193,13 @@ onMounted(fetchDoc)
   align-items: center;
   gap: 0.5rem;
   padding: 1rem;
-  background: #fef9c3;
+  background: var(--status-processing-bg);
   border-radius: var(--radius);
   margin-bottom: 1rem;
   font-size: 0.875rem;
-  color: #854d0e;
+  color: var(--status-processing-text);
 }
-.reader-status-error { background: #fee2e2; color: #991b1b; }
+.reader-status-error { background: var(--status-error-bg); color: var(--status-error-text); }
 
 .pdf-viewer { width: 100%; }
 .pdf-frame { width: 100%; height: 80vh; border: 1px solid var(--border); border-radius: var(--radius); }
