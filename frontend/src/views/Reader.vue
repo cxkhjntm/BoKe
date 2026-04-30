@@ -2,8 +2,8 @@
   <div>
     <div class="page-header">
       <div>
-        <router-link to="/" class="back-link">&larr; Documents</router-link>
-        <h1 class="page-title" style="margin-top:0.25rem;">{{ doc?.title || 'Loading...' }}</h1>
+        <router-link to="/documents" class="back-link">&larr; 文档列表</router-link>
+        <h1 class="page-title" style="margin-top:0.25rem;">{{ doc?.title || '加载中...' }}</h1>
         <div v-if="doc" class="doc-meta">
           <span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span>
           <span class="doc-type">{{ doc.file_type.toUpperCase() }}</span>
@@ -13,7 +13,7 @@
       </div>
       <div v-if="doc" class="header-actions">
         <button class="btn btn-sm" @click="openOriginal" :disabled="fileLoading">
-          {{ fileLoading ? 'Loading...' : 'Open Original' }}
+          {{ fileLoading ? '加载中...' : '打开原文' }}
         </button>
         <button
           v-if="doc.status === 'error'"
@@ -21,7 +21,7 @@
           @click="handleRetry"
           :disabled="retrying"
         >
-          {{ retrying ? 'Retrying...' : 'Retry Processing' }}
+          {{ retrying ? '重试中...' : '重新处理' }}
         </button>
       </div>
     </div>
@@ -29,7 +29,7 @@
     <div v-if="loading" class="empty"><span class="spinner"></span></div>
     <div v-else-if="error" class="alert alert-error">
       {{ error }}
-      <button class="btn btn-sm" style="margin-left:0.5rem;" @click="fetchDoc">Retry</button>
+      <button class="btn btn-sm" style="margin-left:0.5rem;" @click="fetchDoc">重试</button>
     </div>
     <div v-else-if="doc" class="reader-layout">
       <!-- Main content area -->
@@ -37,66 +37,66 @@
         <!-- Status messages -->
         <div v-if="doc.status === 'queued'" class="reader-status">
           <span class="spinner"></span>
-          <span>Document is queued for processing...</span>
+          <span>文档排队等待处理...</span>
         </div>
         <div v-else-if="doc.status === 'processing'" class="reader-status">
           <span class="spinner"></span>
-          <span>Document is being processed...</span>
+          <span>文档处理中...</span>
         </div>
         <div v-else-if="doc.status === 'error'" class="reader-status reader-status-error">
-          <span>Processing failed: {{ doc.error_message || 'Unknown error' }}</span>
+          <span>处理失败：{{ doc.error_message || '未知错误' }}</span>
           <button class="btn btn-sm btn-primary" @click="handleRetry" :disabled="retrying" style="margin-left:auto;">
-            {{ retrying ? 'Retrying...' : 'Retry' }}
+            {{ retrying ? '重试中...' : '重试' }}
           </button>
         </div>
 
         <!-- PDF viewer -->
         <div v-if="doc.file_type === 'pdf' && doc.status === 'ready'" class="pdf-viewer">
-          <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading PDF...</div>
+          <div v-if="fileLoading" class="empty"><span class="spinner"></span> 加载 PDF...</div>
           <iframe v-else-if="fileBlobUrl" :src="fileBlobUrl" class="pdf-frame" title="PDF Viewer"></iframe>
         </div>
 
         <!-- Image viewer -->
         <div v-else-if="['png','jpg','jpeg'].includes(doc.file_type) && doc.status === 'ready'" class="image-viewer">
-          <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading image...</div>
+          <div v-if="fileLoading" class="empty"><span class="spinner"></span> 加载图片...</div>
           <img v-else-if="fileBlobUrl" :src="fileBlobUrl" :alt="doc.title" class="preview-image" />
         </div>
 
         <!-- Markdown viewer -->
         <div v-else-if="doc.file_type === 'md'" class="md-viewer">
           <div v-if="doc.status === 'ready' && renderedMd" class="md-content" v-html="renderedMd"></div>
-          <div v-else-if="doc.status === 'ready'" class="empty">No content to display</div>
+          <div v-else-if="doc.status === 'ready'" class="empty">暂无内容可显示</div>
         </div>
 
         <!-- DOCX: show extracted text -->
         <div v-else-if="doc.file_type === 'docx'" class="text-viewer">
           <div v-if="doc.status === 'ready' && doc.content_text" class="text-content">{{ doc.content_text }}</div>
-          <div v-else-if="doc.status === 'ready'" class="empty">No text content extracted</div>
+          <div v-else-if="doc.status === 'ready'" class="empty">未能提取文本内容</div>
         </div>
 
         <!-- Fallback -->
         <div v-else class="text-viewer">
           <div v-if="doc.content_text" class="text-content">{{ doc.content_text }}</div>
-          <div v-else class="empty">No preview available for this file type</div>
+          <div v-else class="empty">该文件类型暂不支持预览</div>
         </div>
       </div>
 
       <!-- Metadata sidebar -->
       <aside class="reader-sidebar">
         <div class="card sidebar-section">
-          <h3 class="sidebar-title">Document Info</h3>
+          <h3 class="sidebar-title">文档信息</h3>
           <dl class="meta-list">
-            <dt>File Type</dt>
+            <dt>文件类型</dt>
             <dd>{{ doc.file_type.toUpperCase() }}</dd>
-            <dt>Size</dt>
+            <dt>大小</dt>
             <dd>{{ formatSize(doc.file_size) }}</dd>
-            <dt>Status</dt>
+            <dt>状态</dt>
             <dd><span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span></dd>
-            <dt>Created</dt>
+            <dt>创建时间</dt>
             <dd>{{ formatDate(doc.created_at) }}</dd>
-            <dt>Updated</dt>
+            <dt>更新时间</dt>
             <dd>{{ formatDate(doc.updated_at) }}</dd>
-            <dt>Original File</dt>
+            <dt>原始文件</dt>
             <dd class="meta-filename">{{ doc.original_filename }}</dd>
           </dl>
         </div>
@@ -106,10 +106,10 @@
     <!-- Prev/Next navigation -->
     <div v-if="doc" class="doc-nav">
       <button class="btn btn-sm" :disabled="!prevId" @click="goToDoc(prevId)">
-        &larr; Previous
+        &larr; 上一篇
       </button>
       <button class="btn btn-sm" :disabled="!nextId" @click="goToDoc(nextId)">
-        Next &rarr;
+        下一篇 &rarr;
       </button>
     </div>
   </div>
@@ -230,7 +230,7 @@ async function fetchDoc() {
     }
     fetchAdjacentIds()
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to load document'
+    error.value = e.response?.data?.message || '加载文档失败'
   } finally {
     loading.value = false
   }
@@ -243,7 +243,7 @@ async function openOriginal() {
     const url = await fetchFileBlobUrl(route.params.id, 'original')
     window.open(url, '_blank')
   } catch {
-    error.value = 'Failed to load file'
+    error.value = '加载文件失败'
   } finally {
     fileLoading.value = false
   }
@@ -257,7 +257,7 @@ async function handleRetry() {
     updateRenderedMd()
     startPolling()
   } catch (e) {
-    error.value = e.response?.data?.message || 'Retry failed'
+    error.value = e.response?.data?.message || '重试失败'
   } finally {
     retrying.value = false
   }

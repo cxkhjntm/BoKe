@@ -32,10 +32,10 @@
 import { formatDate, statusLabel } from '../utils/format'
 
 defineProps({
-  title: { type: String, default: 'Documents' },
+  title: { type: String, default: '文档列表' },
   docs: { type: Array, default: () => [] },
   loading: { type: Boolean, default: false },
-  emptyText: { type: String, default: 'No documents yet' },
+  emptyText: { type: String, default: '暂无文档' },
 })
 
 defineEmits(['navigate'])

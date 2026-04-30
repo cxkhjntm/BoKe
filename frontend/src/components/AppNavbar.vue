@@ -2,17 +2,17 @@
   <nav class="navbar">
     <div class="container navbar-inner">
       <router-link to="/" class="navbar-brand">BoKe</router-link>
-      <button class="navbar-toggle" @click="mobileOpen = !mobileOpen" aria-label="Toggle menu">
+      <button class="navbar-toggle" @click="mobileOpen = !mobileOpen" aria-label="切换菜单">
         <span :class="{ open: mobileOpen }"></span>
       </button>
       <div class="navbar-actions" :class="{ 'navbar-actions-open': mobileOpen }">
         <nav class="navbar-links">
-          <router-link to="/" class="nav-link" @click="mobileOpen = false">Dashboard</router-link>
-          <router-link to="/documents" class="nav-link" @click="mobileOpen = false">Documents</router-link>
-          <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">Favorites</router-link>
+          <router-link to="/" class="nav-link" @click="mobileOpen = false">仪表盘</router-link>
+          <router-link to="/documents" class="nav-link" @click="mobileOpen = false">文档列表</router-link>
+          <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">我的收藏</router-link>
         </nav>
         <SearchBar />
-        <button class="btn btn-sm" @click="handleLogout">Logout</button>
+        <button class="btn btn-sm" @click="handleLogout">退出登录</button>
       </div>
     </div>
   </nav>

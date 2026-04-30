@@ -5,7 +5,7 @@
       v-model="query"
       class="input search-input"
       type="text"
-      placeholder="Search documents... (press /)"
+      placeholder="搜索文档... (按 / 键)"
       @focus="focused = true"
       @blur="focused = false"
       @keyup.enter="doSearch"
@@ -56,13 +56,13 @@ function isInputFocused() {
 function doSearch() {
   const q = query.value.trim()
   if (q) {
-    router.push({ path: '/', query: { q } })
+    router.push({ path: '/documents', query: { q } })
   }
 }
 
 function clearSearch() {
   query.value = ''
-  router.push('/')
+  router.push('/documents')
   searchInput.value?.focus()
 }
 </script>

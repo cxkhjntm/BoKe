@@ -3,8 +3,8 @@
     <!-- Search results mode -->
     <template v-if="isSearch">
       <div class="page-header">
-        <h1 class="page-title">Search: "{{ searchQuery }}"</h1>
-        <router-link to="/" class="btn btn-sm">Back to documents</router-link>
+        <h1 class="page-title">搜索："{{ searchQuery }}"</h1>
+        <router-link to="/documents" class="btn btn-sm">返回文档列表</router-link>
       </div>
       <div v-if="searchLoading" class="skeleton-list">
         <div v-for="i in 3" :key="i" class="card skeleton-card">
@@ -18,7 +18,7 @@
       <div v-else-if="searchError" class="alert alert-error">{{ searchError }}</div>
       <div v-else-if="searchResults.length === 0" class="empty">
         <div class="empty-icon">&#128269;</div>
-        <p>No results found</p>
+        <p>未找到结果</p>
       </div>
       <div v-else class="doc-list">
         <div
@@ -48,10 +48,10 @@
     <!-- Normal document list mode -->
     <template v-else>
       <div class="page-header">
-        <h1 class="page-title">Documents</h1>
+        <h1 class="page-title">文档列表</h1>
         <label class="btn btn-primary btn-sm" :class="{ disabled: uploading }">
           <span v-if="uploading" class="spinner"></span>
-          {{ uploading ? `${uploadProgress}%` : 'Upload' }}
+          {{ uploading ? `${uploadProgress}%` : '上传' }}
           <input
             ref="fileInput"
             type="file"
@@ -74,25 +74,25 @@
       >
         <div class="drop-zone-content">
           <span class="drop-zone-icon">&#128220;</span>
-          <span>Drag & drop files here, or click Upload</span>
+          <span>拖放文件到此处，或点击上传</span>
         </div>
       </div>
 
       <div v-if="uploadError" class="alert alert-error">{{ uploadError }}</div>
-      <div v-if="uploadSuccess" class="alert alert-success">Document uploaded successfully!</div>
+      <div v-if="uploadSuccess" class="alert alert-success">文档上传成功！</div>
       <div v-if="listError" class="alert alert-error">{{ listError }}</div>
 
       <!-- Filter bar with clearable tags -->
       <div class="filter-bar">
         <select v-model="filters.status" class="input filter-select" @change="onFilterChange">
-          <option value="">All Status</option>
-          <option value="queued">Queued</option>
-          <option value="processing">Processing</option>
-          <option value="ready">Ready</option>
-          <option value="error">Error</option>
+          <option value="">全部状态</option>
+          <option value="queued">排队中</option>
+          <option value="processing">处理中</option>
+          <option value="ready">已完成</option>
+          <option value="error">错误</option>
         </select>
         <select v-model="filters.file_type" class="input filter-select" @change="onFilterChange">
-          <option value="">All Types</option>
+          <option value="">全部类型</option>
           <option value="pdf">PDF</option>
           <option value="docx">DOCX</option>
           <option value="md">Markdown</option>
@@ -101,7 +101,7 @@
         </select>
         <label class="filter-fav-toggle">
           <input type="checkbox" v-model="filters.favoritesOnly" @change="onFilterChange" />
-          <span class="fav-toggle-label">&#9733; Favorites</span>
+          <span class="fav-toggle-label">&#9733; 收藏</span>
         </label>
         <div v-if="hasActiveFilters" class="filter-tags">
           <span v-if="filters.status" class="filter-tag" @click="clearFilter('status')">
@@ -111,7 +111,7 @@
             {{ filters.file_type.toUpperCase() }} &times;
           </span>
           <span v-if="filters.favoritesOnly" class="filter-tag" @click="clearFilter('favoritesOnly')">
-            &#9733; Favorites &times;
+            &#9733; 收藏 &times;
           </span>
         </div>
       </div>
@@ -129,7 +129,7 @@
 
       <div v-else-if="documents.length === 0" class="empty">
         <div class="empty-icon">&#128196;</div>
-        <p>No documents yet. Upload your first document!</p>
+        <p>暂无文档，上传你的第一份文档吧！</p>
       </div>
       <div v-else class="doc-list">
         <div
@@ -168,7 +168,7 @@
               class="btn-icon fav-btn"
               :class="{ 'fav-active': doc.is_favorite }"
               @click.stop="handleToggleFavorite(doc)"
-              :title="doc.is_favorite ? 'Remove from favorites' : 'Add to favorites'"
+              :title="doc.is_favorite ? '取消收藏' : '添加收藏'"
             >
               {{ doc.is_favorite ? '&#9733;' : '&#9734;' }}
             </button>
@@ -178,14 +178,14 @@
               @click.stop="handleRetry(doc.id)"
               :disabled="retryingId === doc.id"
             >
-              {{ retryingId === doc.id ? 'Retrying...' : 'Retry' }}
+              {{ retryingId === doc.id ? '重试中...' : '重试' }}
             </button>
             <button
               class="btn btn-sm btn-danger"
               @click.stop="handleDelete(doc.id, doc.title)"
               :disabled="deletingId === doc.id"
             >
-              Delete
+              删除
             </button>
           </div>
         </div>
@@ -193,9 +193,9 @@
 
       <!-- Pagination -->
       <div v-if="total > limit" class="pagination">
-        <button class="btn btn-sm" :disabled="page <= 1" @click="page--; fetchDocs()">Prev</button>
-        <span class="page-info">Page {{ page }} of {{ Math.ceil(total / limit) }}</span>
-        <button class="btn btn-sm" :disabled="page * limit >= total" @click="page++; fetchDocs()">Next</button>
+        <button class="btn btn-sm" :disabled="page <= 1" @click="page--; fetchDocs()">上一页</button>
+        <span class="page-info">第 {{ page }} 页，共 {{ Math.ceil(total / limit) }} 页</span>
+        <button class="btn btn-sm" :disabled="page * limit >= total" @click="page++; fetchDocs()">下一页</button>
       </div>
     </template>
   </div>
@@ -282,7 +282,7 @@ async function fetchDocs(silent = false) {
       stopPolling()
     }
   } catch (e) {
-    listError.value = e.response?.data?.message || 'Failed to load documents'
+    listError.value = e.response?.data?.message || '加载文档失败'
   } finally {
     if (!silent) loading.value = false
   }
@@ -296,7 +296,7 @@ async function doSearch(q) {
     const res = await searchDocuments({ q, page: 1, limit: 50 })
     searchResults.value = res.data.data.items
   } catch (e) {
-    searchError.value = e.response?.data?.message || 'Search failed'
+    searchError.value = e.response?.data?.message || '搜索失败'
     searchResults.value = []
   } finally {
     searchLoading.value = false
@@ -363,7 +363,7 @@ async function uploadFile(file) {
     setTimeout(() => { uploadSuccess.value = false }, 3000)
     fetchDocs()
   } catch (err) {
-    uploadError.value = err.response?.data?.message || 'Upload failed'
+    uploadError.value = err.response?.data?.message || '上传失败'
   } finally {
     uploading.value = false
     setTimeout(() => { uploadProgress.value = 0 }, 500)
@@ -372,13 +372,13 @@ async function uploadFile(file) {
 }
 
 async function handleDelete(id, title) {
-  if (!confirm(`Delete "${title}"?`)) return
+  if (!confirm(`确定删除"${title}"吗？`)) return
   deletingId.value = id
   try {
     await deleteDocument(id)
     fetchDocs()
   } catch (e) {
-    listError.value = e.response?.data?.message || 'Delete failed'
+    listError.value = e.response?.data?.message || '删除失败'
   } finally {
     deletingId.value = null
   }
@@ -390,7 +390,7 @@ async function handleRetry(id) {
     await retryDocument(id)
     fetchDocs()
   } catch (e) {
-    listError.value = e.response?.data?.message || 'Retry failed'
+    listError.value = e.response?.data?.message || '重试失败'
   } finally {
     retryingId.value = null
   }
@@ -403,7 +403,7 @@ function goToReader(id) {
 watch(() => route.query.q, (q) => {
   if (q) {
     doSearch(q)
-  } else if (route.path === '/') {
+  } else if (route.path === '/documents') {
     page.value = 1
     fetchDocs()
   }

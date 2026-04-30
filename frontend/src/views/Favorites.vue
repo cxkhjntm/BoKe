@@ -1,8 +1,8 @@
 <template>
   <div>
     <div class="page-header">
-      <h1 class="page-title">&#9733; Favorites</h1>
-      <router-link to="/documents" class="btn btn-sm">All Documents</router-link>
+      <h1 class="page-title">&#9733; 我的收藏</h1>
+      <router-link to="/documents" class="btn btn-sm">全部文档</router-link>
     </div>
 
     <div v-if="listError" class="alert alert-error">{{ listError }}</div>
@@ -20,7 +20,7 @@
 
     <div v-else-if="documents.length === 0" class="empty">
       <div class="empty-icon">&#9734;</div>
-      <p>No favorites yet. Star a document to add it here!</p>
+      <p>暂无收藏，给文档添加星标即可在此查看！</p>
     </div>
     <div v-else class="doc-list">
       <div
@@ -55,7 +55,7 @@
           <button
             class="btn-icon fav-btn fav-active"
             @click.stop="handleRemoveFavorite(doc)"
-            title="Remove from favorites"
+            title="取消收藏"
           >
             &#9733;
           </button>
@@ -65,9 +65,9 @@
 
     <!-- Pagination -->
     <div v-if="total > limit" class="pagination">
-      <button class="btn btn-sm" :disabled="page <= 1" @click="page--; fetchDocs()">Prev</button>
-      <span class="page-info">Page {{ page }} of {{ Math.ceil(total / limit) }}</span>
-      <button class="btn btn-sm" :disabled="page * limit >= total" @click="page++; fetchDocs()">Next</button>
+      <button class="btn btn-sm" :disabled="page <= 1" @click="page--; fetchDocs()">上一页</button>
+      <span class="page-info">第 {{ page }} 页，共 {{ Math.ceil(total / limit) }} 页</span>
+      <button class="btn btn-sm" :disabled="page * limit >= total" @click="page++; fetchDocs()">下一页</button>
     </div>
   </div>
 </template>
@@ -107,7 +107,7 @@ async function fetchDocs() {
     documents.value = res.data.data.items
     total.value = res.data.data.total
   } catch (e) {
-    listError.value = e.response?.data?.message || 'Failed to load favorites'
+    listError.value = e.response?.data?.message || '加载收藏失败'
   } finally {
     loading.value = false
   }

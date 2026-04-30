@@ -10,5 +10,5 @@ export function formatSize(bytes) {
 }
 
 export function statusLabel(s) {
-  return { queued: 'Queued', processing: 'Processing', ready: 'Ready', error: 'Error' }[s] || s
+  return { queued: '排队中', processing: '处理中', ready: '已完成', error: '错误' }[s] || s
 }

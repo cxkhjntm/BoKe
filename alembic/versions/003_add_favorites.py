@@ -15,65 +15,93 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
+def _column_exists(table: str, column: str) -> bool:
+    """Check if a column exists in a SQLite table."""
+    conn = op.get_bind()
+    result = conn.execute(sa.text(f"PRAGMA table_info({table})"))
+    columns = [row[1] for row in result]
+    return column in columns
+
+
+def _table_exists(table: str) -> bool:
+    """Check if a SQLite table exists."""
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text("SELECT name FROM sqlite_master WHERE type='table' AND name=:name"),
+        {"name": table},
+    )
+    return result.fetchone() is not None
+
+
 def upgrade() -> None:
-    # SQLite table rebuild: add is_favorite, view_count, last_viewed_at
-    op.execute("""
-        CREATE TABLE documents_new (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            title VARCHAR(255) NOT NULL,
-            original_filename VARCHAR(255) NOT NULL,
-            file_type VARCHAR(20) NOT NULL,
-            file_size INTEGER NOT NULL,
-            file_path VARCHAR(500) NOT NULL,
-            thumbnail_path VARCHAR(500),
-            content_text TEXT,
-            status VARCHAR(20) DEFAULT 'queued',
-            error_message TEXT,
-            is_favorite BOOLEAN DEFAULT FALSE,
-            view_count INTEGER DEFAULT 0,
-            last_viewed_at DATETIME,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            CHECK (file_type IN ('pdf','docx','md','png','jpg','jpeg')),
-            CHECK (status IN ('queued','processing','ready','error'))
-        )
-    """)
+    # Only rebuild documents table if is_favorite column is missing
+    if not _column_exists("documents", "is_favorite"):
+        op.execute("""
+            CREATE TABLE documents_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                title VARCHAR(255) NOT NULL,
+                original_filename VARCHAR(255) NOT NULL,
+                file_type VARCHAR(20) NOT NULL,
+                file_size INTEGER NOT NULL,
+                file_path VARCHAR(500) NOT NULL,
+                thumbnail_path VARCHAR(500),
+                content_text TEXT,
+                status VARCHAR(20) DEFAULT 'queued',
+                error_message TEXT,
+                is_favorite BOOLEAN DEFAULT FALSE,
+                view_count INTEGER DEFAULT 0,
+                last_viewed_at DATETIME,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                CHECK (file_type IN ('pdf','docx','md','png','jpg','jpeg')),
+                CHECK (status IN ('queued','processing','ready','error'))
+            )
+        """)
 
-    op.execute("""
-        INSERT INTO documents_new
-            (id, user_id, title, original_filename, file_type, file_size,
-             file_path, thumbnail_path, content_text, status, error_message,
-             created_at, updated_at)
-        SELECT
-            id, user_id, title, original_filename, file_type, file_size,
-            file_path, thumbnail_path, content_text, status, error_message,
-            created_at, updated_at
-        FROM documents
-    """)
+        op.execute("""
+            INSERT INTO documents_new
+                (id, user_id, title, original_filename, file_type, file_size,
+                 file_path, thumbnail_path, content_text, status, error_message,
+                 created_at, updated_at)
+            SELECT
+                id, user_id, title, original_filename, file_type, file_size,
+                file_path, thumbnail_path, content_text, status, error_message,
+                created_at, updated_at
+            FROM documents
+        """)
 
-    op.execute("DROP INDEX IF EXISTS idx_documents_status")
-    op.execute("DROP INDEX IF EXISTS idx_documents_user_id")
-    op.execute("DROP TABLE documents")
-    op.execute("ALTER TABLE documents_new RENAME TO documents")
+        op.execute("DROP INDEX IF EXISTS idx_documents_status")
+        op.execute("DROP INDEX IF EXISTS idx_documents_user_id")
+        op.execute("DROP TABLE documents")
+        op.execute("ALTER TABLE documents_new RENAME TO documents")
 
-    op.execute("CREATE INDEX idx_documents_user_id ON documents(user_id)")
-    op.execute("CREATE INDEX idx_documents_status ON documents(status)")
-    op.execute("CREATE INDEX idx_documents_favorite ON documents(user_id, is_favorite)")
+        op.execute("CREATE INDEX idx_documents_user_id ON documents(user_id)")
+        op.execute("CREATE INDEX idx_documents_status ON documents(status)")
+    else:
+        # Columns already exist (partially applied migration) — add missing ones if needed
+        if not _column_exists("documents", "view_count"):
+            op.execute("ALTER TABLE documents ADD COLUMN view_count INTEGER DEFAULT 0")
+        if not _column_exists("documents", "last_viewed_at"):
+            op.execute("ALTER TABLE documents ADD COLUMN last_viewed_at DATETIME")
 
-    # Activity log table
-    op.execute("""
-        CREATE TABLE activity_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL REFERENCES users(id),
-            document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
-            action VARCHAR(20) NOT NULL,
-            metadata_json TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    op.execute("CREATE INDEX idx_activity_user_id ON activity_log(user_id)")
-    op.execute("CREATE INDEX idx_activity_created_at ON activity_log(created_at)")
+    # Create index if not exists
+    op.execute("CREATE INDEX IF NOT EXISTS idx_documents_favorite ON documents(user_id, is_favorite)")
+
+    # Activity log table — only create if it doesn't exist
+    if not _table_exists("activity_log"):
+        op.execute("""
+            CREATE TABLE activity_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL REFERENCES users(id),
+                document_id INTEGER REFERENCES documents(id) ON DELETE SET NULL,
+                action VARCHAR(20) NOT NULL,
+                metadata_json TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+    op.execute("CREATE INDEX IF NOT EXISTS idx_activity_user_id ON activity_log(user_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_activity_created_at ON activity_log(created_at)")
 
 
 def downgrade() -> None:

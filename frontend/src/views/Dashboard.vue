@@ -1,34 +1,34 @@
 <template>
   <div>
     <div class="page-header">
-      <h1 class="page-title">Dashboard</h1>
-      <router-link to="/documents" class="btn btn-sm">All Documents</router-link>
+      <h1 class="page-title">仪表盘</h1>
+      <router-link to="/documents" class="btn btn-sm">全部文档</router-link>
     </div>
 
     <div v-if="error" class="alert alert-error">{{ error }}</div>
 
     <!-- Stats cards -->
     <div class="stats-grid">
-      <StatsCard icon="&#128196;" :value="stats.total_docs" label="Total Documents" />
-      <StatsCard icon="&#128451;" :value="stats.total_size" label="Total Size" format="size" />
-      <StatsCard icon="&#128196;" :value="stats.by_type?.pdf || 0" label="PDFs" />
-      <StatsCard icon="&#128196;" :value="stats.by_type?.docx || 0" label="DOCX" />
+      <StatsCard icon="&#128196;" :value="stats.total_docs" label="文档总数" />
+      <StatsCard icon="&#128451;" :value="stats.total_size" label="总大小" format="size" />
+      <StatsCard icon="&#128196;" :value="stats.by_type?.pdf || 0" label="PDF 文档" />
+      <StatsCard icon="&#128196;" :value="stats.by_type?.docx || 0" label="DOCX 文档" />
     </div>
 
     <!-- Main grid: recent + top docs -->
     <div class="dashboard-grid">
       <RecentDocs
-        title="Recently Viewed"
+        title="最近查看"
         :docs="recentDocs"
         :loading="loading"
-        empty-text="No documents viewed yet"
+        empty-text="暂无查看记录"
         @navigate="goToReader"
       />
       <RecentDocs
-        title="Most Viewed"
+        title="最常查看"
         :docs="topDocs"
         :loading="loading"
-        empty-text="No view data yet"
+        empty-text="暂无查看数据"
         @navigate="goToReader"
       />
     </div>
@@ -70,7 +70,7 @@ async function fetchDashboard() {
     topDocs.value = topRes.data.data
     activities.value = actRes.data.data
   } catch (e) {
-    error.value = e.response?.data?.message || 'Failed to load dashboard'
+    error.value = e.response?.data?.message || '加载仪表盘失败'
   } finally {
     loading.value = false
   }

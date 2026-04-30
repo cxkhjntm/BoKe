@@ -1,13 +1,13 @@
 <template>
   <div class="card timeline-section">
-    <h3 class="section-title">Recent Activity</h3>
+    <h3 class="section-title">最近活动</h3>
     <div v-if="loading" class="skeleton-list">
       <div v-for="i in 4" :key="i" class="skeleton-row">
         <div class="skeleton-dot"></div>
         <div class="skeleton-line" style="flex:1"></div>
       </div>
     </div>
-    <div v-else-if="activities.length === 0" class="empty-hint">No activity yet</div>
+    <div v-else-if="activities.length === 0" class="empty-hint">暂无活动记录</div>
     <div v-else class="timeline">
       <div v-for="item in activities" :key="item.id" class="timeline-item">
         <span class="timeline-icon">{{ actionIcon(item.action) }}</span>
@@ -33,7 +33,7 @@ function actionIcon(action) {
 }
 
 function actionLabel(action) {
-  const map = { upload: 'Uploaded', view: 'Viewed', delete: 'Deleted', search: 'Searched', favorite: 'Favorited' }
+  const map = { upload: '上传了', view: '查看了', delete: '删除了', search: '搜索了', favorite: '收藏了' }
   return map[action] || action
 }
 
@@ -43,12 +43,12 @@ function formatTime(ts) {
   const now = new Date()
   const diffMs = now - d
   const diffMin = Math.floor(diffMs / 60000)
-  if (diffMin < 1) return 'just now'
-  if (diffMin < 60) return `${diffMin}m ago`
+  if (diffMin < 1) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
   const diffH = Math.floor(diffMin / 60)
-  if (diffH < 24) return `${diffH}h ago`
+  if (diffH < 24) return `${diffH}小时前`
   const diffD = Math.floor(diffH / 24)
-  return `${diffD}d ago`
+  return `${diffD}天前`
 }
 </script>
 

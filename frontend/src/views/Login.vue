@@ -3,14 +3,14 @@
     <div class="login-card card">
       <div class="login-header">
         <h1 class="login-title">📚 BoKe</h1>
-        <p class="login-subtitle">Personal Research Portal</p>
+        <p class="login-subtitle">个人研究资料库</p>
       </div>
 
       <div v-if="error" class="alert alert-error">{{ error }}</div>
 
       <form @submit.prevent="handleLogin">
         <div class="form-group">
-          <label class="form-label" for="username">Username</label>
+          <label class="form-label" for="username">用户名</label>
           <input
             id="username"
             v-model="username"
@@ -22,7 +22,7 @@
           />
         </div>
         <div class="form-group">
-          <label class="form-label" for="password">Password</label>
+          <label class="form-label" for="password">密码</label>
           <input
             id="password"
             v-model="password"
@@ -34,7 +34,7 @@
         </div>
         <button class="btn btn-primary" style="width:100%;" :disabled="loading">
           <span v-if="loading" class="spinner"></span>
-          {{ loading ? 'Signing in...' : 'Sign In' }}
+          {{ loading ? '登录中...' : '登录' }}
         </button>
       </form>
     </div>
@@ -61,9 +61,9 @@ async function handleLogin() {
     await authStore.login(username.value, password.value)
     router.push('/')
   } catch (e) {
-    const msg = e.response?.data?.message || 'Login failed'
+    const msg = e.response?.data?.message || '登录失败'
     if (e.response?.data?.code === 4030) {
-      error.value = 'Account is locked. Please try again later.'
+      error.value = '账户已锁定，请稍后再试'
     } else {
       error.value = msg
     }
