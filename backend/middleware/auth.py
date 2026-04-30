@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Optional
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -12,19 +13,29 @@ from backend.utils.security import decode_token, sha256_hash
 from backend.utils.logger import get_logger
 
 logger = get_logger("middleware.auth")
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
     db: Session = Depends(get_db),
 ) -> User:
+    """Authenticate via Authorization header (JWT or API Key)."""
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": 4001, "message": "Authentication required", "data": None},
+        )
     token = credentials.credentials
-
-    # Route to API key auth if token has the sk- prefix
     if token.startswith("sk-"):
         return _authenticate_api_key(token, db)
+    return _authenticate_jwt(token, db)
 
+
+def authenticate_from_token(token: str, db: Session) -> User:
+    """Authenticate from a raw token string (used for query-param auth in file endpoints)."""
+    if token.startswith("sk-"):
+        return _authenticate_api_key(token, db)
     return _authenticate_jwt(token, db)
 
 

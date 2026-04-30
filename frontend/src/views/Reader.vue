@@ -12,7 +12,9 @@
         </div>
       </div>
       <div v-if="doc" style="display:flex; gap:0.5rem;">
-        <a :href="originalUrl" target="_blank" class="btn btn-sm">Open Original</a>
+        <button class="btn btn-sm" @click="openOriginal" :disabled="fileLoading">
+          {{ fileLoading ? 'Loading...' : 'Open Original' }}
+        </button>
         <button
           v-if="doc.status === 'error'"
           class="btn btn-sm"
@@ -38,12 +40,14 @@
 
       <!-- PDF viewer -->
       <div v-if="doc.file_type === 'pdf' && doc.status === 'ready'" class="pdf-viewer">
-        <iframe :src="originalUrl" class="pdf-frame" title="PDF Viewer"></iframe>
+        <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading PDF...</div>
+        <iframe v-else-if="fileBlobUrl" :src="fileBlobUrl" class="pdf-frame" title="PDF Viewer"></iframe>
       </div>
 
       <!-- Image viewer -->
       <div v-else-if="['png','jpg','jpeg'].includes(doc.file_type) && doc.status === 'ready'" class="image-viewer">
-        <img :src="originalUrl" :alt="doc.title" class="preview-image" />
+        <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading image...</div>
+        <img v-else-if="fileBlobUrl" :src="fileBlobUrl" :alt="doc.title" class="preview-image" />
       </div>
 
       <!-- Markdown viewer -->
@@ -68,9 +72,9 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { getDocument, retryDocument, getFileUrl } from '../api'
+import { getDocument, retryDocument, fetchFileBlobUrl } from '../api'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
@@ -81,16 +85,33 @@ const doc = ref(null)
 const loading = ref(true)
 const error = ref('')
 const retrying = ref(false)
+const fileBlobUrl = ref('')
+const fileLoading = ref(false)
 
-const originalUrl = computed(() => doc.value ? getFileUrl(docId, 'original') : '')
+const renderedMd = ref('')
 
-const renderedMd = computed(() => {
+function updateRenderedMd() {
   if (doc.value?.file_type === 'md' && doc.value?.content_text) {
     const raw = marked(doc.value.content_text, { breaks: true })
-    return DOMPurify.sanitize(raw)
+    renderedMd.value = DOMPurify.sanitize(raw)
+  } else {
+    renderedMd.value = ''
   }
-  return ''
-})
+}
+
+async function loadFileBlob() {
+  if (!doc.value || doc.value.status !== 'ready') return
+  if (!['pdf', 'png', 'jpg', 'jpeg'].includes(doc.value.file_type)) return
+
+  fileLoading.value = true
+  try {
+    fileBlobUrl.value = await fetchFileBlobUrl(docId, 'original')
+  } catch {
+    // Blob load failed — user can still use "Open Original"
+  } finally {
+    fileLoading.value = false
+  }
+}
 
 async function fetchDoc() {
   loading.value = true
@@ -98,10 +119,25 @@ async function fetchDoc() {
   try {
     const res = await getDocument(docId)
     doc.value = res.data.data
+    updateRenderedMd()
+    await loadFileBlob()
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to load document'
   } finally {
     loading.value = false
+  }
+}
+
+async function openOriginal() {
+  if (!doc.value) return
+  fileLoading.value = true
+  try {
+    const url = await fetchFileBlobUrl(docId, 'original')
+    window.open(url, '_blank')
+  } catch {
+    error.value = 'Failed to load file'
+  } finally {
+    fileLoading.value = false
   }
 }
 
@@ -110,6 +146,10 @@ async function handleRetry() {
   try {
     const res = await retryDocument(docId)
     doc.value = res.data.data
+    updateRenderedMd()
+    if (doc.value.status === 'ready') {
+      await loadFileBlob()
+    }
   } catch (e) {
     error.value = e.response?.data?.message || 'Retry failed'
   } finally {

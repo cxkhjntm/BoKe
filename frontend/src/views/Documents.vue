@@ -7,6 +7,7 @@
         <router-link to="/" class="btn btn-sm">Back to documents</router-link>
       </div>
       <div v-if="searchLoading" class="empty"><span class="spinner"></span></div>
+      <div v-else-if="searchError" class="alert alert-error">{{ searchError }}</div>
       <div v-else-if="searchResults.length === 0" class="empty">
         <div class="empty-icon">🔍</div>
         <p>No results found</p>
@@ -16,11 +17,11 @@
           <div class="doc-card-body">
             <div class="doc-title">{{ item.title }}</div>
             <div class="doc-meta">
-              <span class="badge" :class="'badge-' + item.status">{{ item.status }}</span>
+              <span class="badge" :class="'badge-' + item.status">{{ statusLabel(item.status) }}</span>
               <span class="doc-type">{{ item.file_type.toUpperCase() }}</span>
               <span>{{ formatDate(item.created_at) }}</span>
             </div>
-            <div v-if="item.snippet" class="doc-snippet" v-html="item.snippet"></div>
+            <div v-if="item.snippet" class="doc-snippet">{{ item.snippet }}</div>
           </div>
         </div>
       </div>
@@ -48,16 +49,17 @@
 
       <div v-if="uploadError" class="alert alert-error">{{ uploadError }}</div>
       <div v-if="uploadSuccess" class="alert alert-success">Document uploaded successfully!</div>
+      <div v-if="listError" class="alert alert-error">{{ listError }}</div>
 
       <!-- Filters -->
       <div class="filters">
-        <select v-model="filters.status" class="input filter-select" @change="fetchDocs">
+        <select v-model="filters.status" class="input filter-select" @change="onFilterChange">
           <option value="">All Status</option>
           <option value="ready">Ready</option>
           <option value="processing">Processing</option>
           <option value="error">Error</option>
         </select>
-        <select v-model="filters.file_type" class="input filter-select" @change="fetchDocs">
+        <select v-model="filters.file_type" class="input filter-select" @change="onFilterChange">
           <option value="">All Types</option>
           <option value="pdf">PDF</option>
           <option value="docx">DOCX</option>
@@ -75,9 +77,9 @@
       <div v-else class="doc-list">
         <div v-for="doc in documents" :key="doc.id" class="card doc-card">
           <div class="doc-card-body" @click="goToReader(doc.id)">
-            <div class="doc-card-thumb" v-if="doc.status === 'ready'">
+            <div class="doc-card-thumb" v-if="doc.status === 'ready' && doc.thumbnail_path">
               <img
-                :src="getFileUrl(doc.id, 'thumbnail')"
+                :src="thumbUrl(doc.id)"
                 :alt="doc.title"
                 loading="lazy"
                 @error="$event.target.style.display='none'"
@@ -129,13 +131,14 @@
 <script setup>
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments, getFileUrl } from '../api'
+import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments } from '../api'
 
 const route = useRoute()
 const router = useRouter()
 
 const documents = ref([])
 const loading = ref(false)
+const listError = ref('')
 const page = ref(1)
 const limit = 20
 const total = ref(0)
@@ -154,9 +157,18 @@ const searchQuery = computed(() => route.query.q || '')
 const isSearch = computed(() => !!route.query.q)
 const searchResults = ref([])
 const searchLoading = ref(false)
+const searchError = ref('')
+
+// Auth token for img src
+const authToken = computed(() => localStorage.getItem('access_token') || '')
+
+function thumbUrl(docId) {
+  return `/api/v1/files/${docId}/thumbnail?token=${encodeURIComponent(authToken.value)}`
+}
 
 async function fetchDocs() {
   loading.value = true
+  listError.value = ''
   try {
     const res = await getDocuments({
       page: page.value,
@@ -168,8 +180,8 @@ async function fetchDocs() {
     })
     documents.value = res.data.data.items
     total.value = res.data.data.total
-  } catch {
-    // silent
+  } catch (e) {
+    listError.value = e.response?.data?.message || 'Failed to load documents'
   } finally {
     loading.value = false
   }
@@ -178,14 +190,21 @@ async function fetchDocs() {
 async function doSearch(q) {
   if (!q) return
   searchLoading.value = true
+  searchError.value = ''
   try {
     const res = await searchDocuments({ q, page: 1, limit: 50 })
     searchResults.value = res.data.data.items
-  } catch {
+  } catch (e) {
+    searchError.value = e.response?.data?.message || 'Search failed'
     searchResults.value = []
   } finally {
     searchLoading.value = false
   }
+}
+
+function onFilterChange() {
+  page.value = 1
+  fetchDocs()
 }
 
 async function handleUpload(e) {
@@ -207,7 +226,7 @@ async function handleUpload(e) {
     uploadError.value = err.response?.data?.message || 'Upload failed'
   } finally {
     uploading.value = false
-    uploadProgress.value = 0
+    setTimeout(() => { uploadProgress.value = 0 }, 500)
     if (fileInput.value) fileInput.value.value = ''
   }
 }
@@ -218,8 +237,8 @@ async function handleDelete(id, title) {
   try {
     await deleteDocument(id)
     fetchDocs()
-  } catch {
-    // silent
+  } catch (e) {
+    listError.value = e.response?.data?.message || 'Delete failed'
   } finally {
     deletingId.value = null
   }
@@ -230,8 +249,8 @@ async function handleRetry(id) {
   try {
     await retryDocument(id)
     fetchDocs()
-  } catch {
-    // silent
+  } catch (e) {
+    listError.value = e.response?.data?.message || 'Retry failed'
   } finally {
     retryingId.value = null
   }
@@ -256,8 +275,15 @@ function statusLabel(s) {
   return { ready: 'Ready', processing: 'Processing', error: 'Error' }[s] || s
 }
 
+// Watch search query — handle both present and absent
 watch(() => route.query.q, (q) => {
-  if (q) doSearch(q)
+  if (q) {
+    doSearch(q)
+  } else if (route.path === '/') {
+    // Switched back to normal list mode
+    page.value = 1
+    fetchDocs()
+  }
 })
 
 onMounted(() => {

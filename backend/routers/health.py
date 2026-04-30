@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from backend.database import get_db
 from backend.config import STORAGE_PATH
-from backend.utils.response import ok, fail
+from backend.utils.response import ok
 
 router = APIRouter(tags=["health"])
 
@@ -28,9 +29,11 @@ def health_check(db: Session = Depends(get_db)):
         storage_status = "error"
 
     overall = "healthy" if db_status == "ok" and storage_status == "ok" else "unhealthy"
-    status_code = 200 if overall == "healthy" else 503
 
     data = {"status": overall, "db": db_status, "storage": storage_status}
     if overall == "healthy":
         return ok(data=data)
-    return fail(code=5000, message="Service unhealthy", data=data)
+    return JSONResponse(
+        status_code=503,
+        content={"code": 5000, "message": "Service unhealthy", "data": data},
+    )

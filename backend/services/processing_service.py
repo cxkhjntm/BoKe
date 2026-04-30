@@ -45,7 +45,14 @@ def process_document(db: Session, doc) -> None:
         return
 
     text_ok = _extract_text_step(db, doc, abs_path)
-    _generate_thumbnail_step(db, doc, abs_path)
+    thumb_ok = _generate_thumbnail_step(db, doc, abs_path)
+
+    if not text_ok and not thumb_ok:
+        doc.status = "error"
+        doc.error_message = "Processing failed: could not extract text or generate thumbnail"
+        db.commit()
+        logger.error("Document processing fully failed: id=%d", doc.id)
+        return
 
     doc.status = "ready"
     db.commit()
@@ -66,8 +73,8 @@ def _extract_text_step(db: Session, doc, abs_path: Path) -> bool:
         return False
 
 
-def _generate_thumbnail_step(db: Session, doc, abs_path: Path) -> None:
-    """Generate thumbnail. Failure is non-fatal — document still becomes 'ready'."""
+def _generate_thumbnail_step(db: Session, doc, abs_path: Path) -> bool:
+    """Generate thumbnail. Returns True if thumbnail was generated."""
     try:
         thumb_name = Path(doc.file_path).stem + "_thumb.jpg"
         thumb_dir = STORAGE_PATH / str(doc.user_id) / "thumbnails"
@@ -77,8 +84,11 @@ def _generate_thumbnail_step(db: Session, doc, abs_path: Path) -> None:
             doc.thumbnail_path = str(result.relative_to(STORAGE_PATH))
             db.commit()
             logger.debug("Thumbnail generated: doc_id=%d", doc.id)
+            return True
+        return False
     except Exception as e:
         logger.warning("Thumbnail generation failed (non-fatal): doc_id=%d, error=%s", doc.id, e)
+        return False
 
 
 def retry_processing(db: Session, doc) -> None:

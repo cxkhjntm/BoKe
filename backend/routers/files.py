@@ -1,16 +1,16 @@
 import mimetypes
 from pathlib import Path
+from typing import Optional
 
-from fastapi import APIRouter, Depends, Request
-from fastapi.responses import StreamingResponse, Response
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.middleware.auth import get_current_user
+from backend.middleware.auth import get_current_user, authenticate_from_token
 from backend.models.user import User
 from backend.models.document import Document
 from backend.services import file_service
-from backend.utils.response import fail
 from backend.utils.logger import get_logger
 from backend.exceptions.handlers import AppException
 
@@ -25,16 +25,32 @@ def _get_mime(file_path: Path) -> str:
     return mime or "application/octet-stream"
 
 
+def _resolve_user(
+    token: Optional[str],
+    current_user: Optional[User],
+    db: Session,
+) -> User:
+    """Resolve user from either dependency-injected JWT or query-param token."""
+    if current_user:
+        return current_user
+    if token:
+        return authenticate_from_token(token, db)
+    raise AppException(code=4001, message="Authentication required", status_code=401)
+
+
 @router.get("/{doc_id}/original")
 async def serve_original(
     doc_id: int,
     request: Request,
-    current_user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None, description="JWT token for img/iframe auth"),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    user = _resolve_user(token, current_user, db)
+
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.user_id == current_user.id,
+        Document.user_id == user.id,
     ).first()
     if not doc:
         raise AppException(code=4004, message="Document not found", status_code=404)
@@ -73,6 +89,8 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
         ranges = range_header.replace("bytes=", "").split("-")
         start = int(ranges[0]) if ranges[0] else 0
         end = int(ranges[1]) if ranges[1] else file_size - 1
+        if start < 0 or start > end or start >= file_size:
+            start, end = 0, file_size - 1
     except (ValueError, IndexError):
         start, end = 0, file_size - 1
 
@@ -106,12 +124,15 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
 @router.get("/{doc_id}/thumbnail")
 async def serve_thumbnail(
     doc_id: int,
-    current_user: User = Depends(get_current_user),
+    token: Optional[str] = Query(None, description="JWT token for img auth"),
+    current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    user = _resolve_user(token, current_user, db)
+
     doc = db.query(Document).filter(
         Document.id == doc_id,
-        Document.user_id == current_user.id,
+        Document.user_id == user.id,
     ).first()
     if not doc:
         raise AppException(code=4004, message="Document not found", status_code=404)

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin, logout as apiLogout, refreshToken as apiRefresh } from '../api'
+import { login as apiLogin, logout as apiLogout, refreshToken as apiRefresh, revokeAllBlobUrls } from '../api'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(localStorage.getItem('access_token') || '')
@@ -41,6 +41,7 @@ export const useAuthStore = defineStore('auth', () => {
     refreshTokenVal.value = ''
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    revokeAllBlobUrls()
   }
 
   return { accessToken, refreshToken: refreshTokenVal, isAuthenticated, login, refresh, logout }

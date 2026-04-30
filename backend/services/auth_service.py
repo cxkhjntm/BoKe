@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
@@ -43,9 +43,9 @@ def authenticate(db: Session, username: str, password: str) -> dict:
     if not user:
         raise AppException(code=4001, message="Invalid username or password", status_code=401)
 
-    # Check account lockout
-    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
-        remaining = int((user.locked_until - datetime.now(timezone.utc)).total_seconds() / 60)
+    # Check account lockout (naive UTC to match SQLite storage)
+    if user.locked_until and user.locked_until > datetime.utcnow():
+        remaining = int((user.locked_until - datetime.utcnow()).total_seconds() / 60)
         raise AppException(
             code=4030,
             message=f"Account is locked. Try again in {remaining} minutes.",
@@ -56,9 +56,7 @@ def authenticate(db: Session, username: str, password: str) -> dict:
         # Increment failure count
         user.login_failures = (user.login_failures or 0) + 1
         if user.login_failures >= MAX_LOGIN_FAILURES:
-            from datetime import timedelta
-
-            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+            user.locked_until = datetime.utcnow() + timedelta(minutes=LOCKOUT_MINUTES)
             logger.warning("Account '%s' locked due to %d failed attempts.", username, MAX_LOGIN_FAILURES)
         db.commit()
         raise AppException(code=4001, message="Invalid username or password", status_code=401)

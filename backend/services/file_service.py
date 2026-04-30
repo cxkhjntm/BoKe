@@ -25,8 +25,7 @@ def save_file(user_id: int, filename: str, file_content: bytes, subfolder: str =
 
     # Path traversal check
     resolved = target_path.resolve()
-    storage_resolved = STORAGE_PATH.resolve()
-    if not str(resolved).startswith(str(storage_resolved)):
+    if not resolved.is_relative_to(STORAGE_PATH.resolve()):
         raise ValueError("Path traversal detected")
 
     target_path.write_bytes(file_content)
@@ -46,7 +45,6 @@ def delete_file(relative_path: str) -> None:
 def get_file_path(relative_path: str) -> Path:
     """Get absolute path from relative path. Validates no traversal."""
     full_path = (STORAGE_PATH / relative_path).resolve()
-    storage_resolved = STORAGE_PATH.resolve()
-    if not str(full_path).startswith(str(storage_resolved)):
+    if not full_path.is_relative_to(STORAGE_PATH.resolve()):
         raise ValueError("Path traversal detected")
     return full_path

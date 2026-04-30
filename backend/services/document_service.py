@@ -114,6 +114,8 @@ def retry_document(db: Session, doc_id: int, user_id: int) -> Document:
         )
     doc.status = "processing"
     doc.error_message = None
+    doc.content_text = None
+    doc.thumbnail_path = None
     db.commit()
     db.refresh(doc)
     logger.info("Document retry initiated: id=%d", doc_id)

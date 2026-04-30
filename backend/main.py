@@ -158,7 +158,9 @@ if _FRONTEND_DIST.is_dir():
         Skips /api/ paths to preserve proper 404 responses."""
         if path.startswith("api/"):
             return JSONResponse(status_code=404, content={"code": 4004, "message": "Not found", "data": None})
-        file_path = _FRONTEND_DIST / path
+        file_path = (_FRONTEND_DIST / path).resolve()
+        if not file_path.is_relative_to(_FRONTEND_DIST.resolve()):
+            return JSONResponse(status_code=400, content={"code": 4000, "message": "Invalid path", "data": None})
         if file_path.is_file():
             return FileResponse(file_path)
         return FileResponse(_FRONTEND_DIST / "index.html")

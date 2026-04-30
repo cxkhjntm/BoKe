@@ -14,20 +14,82 @@ api.interceptors.request.use((config) => {
   return config
 })
 
-// Response interceptor: handle 401 → redirect to login
+// --- Refresh lock to prevent concurrent refresh races ---
+let refreshPromise = null
+
+function doRefresh() {
+  if (!refreshPromise) {
+    const rt = localStorage.getItem('refresh_token')
+    if (!rt) {
+      return Promise.reject(new Error('No refresh token'))
+    }
+    refreshPromise = axios
+      .post('/api/v1/auth/refresh', { refresh_token: rt })
+      .then((res) => {
+        const data = res.data.data
+        localStorage.setItem('access_token', data.access_token)
+        localStorage.setItem('refresh_token', data.refresh_token)
+        return data.access_token
+      })
+      .catch((err) => {
+        localStorage.removeItem('access_token')
+        localStorage.removeItem('refresh_token')
+        throw err
+      })
+      .finally(() => {
+        refreshPromise = null
+      })
+  }
+  return refreshPromise
+}
+
+// Response interceptor: handle 401 → attempt refresh, then retry
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      localStorage.removeItem('access_token')
-      localStorage.removeItem('refresh_token')
-      if (window.location.pathname !== '/login') {
-        window.location.href = '/login'
+  async (error) => {
+    const original = error.config
+    if (error.response?.status === 401 && !original._retry) {
+      original._retry = true
+      try {
+        const newToken = await doRefresh()
+        original.headers.Authorization = `Bearer ${newToken}`
+        return api(original)
+      } catch {
+        if (window.location.pathname !== '/login') {
+          window.location.href = '/login'
+        }
+        return Promise.reject(error)
       }
     }
     return Promise.reject(error)
   }
 )
+
+// --- Blob URL cache (revoked on logout or page unload) ---
+const blobCache = new Map()
+
+export function revokeAllBlobUrls() {
+  for (const url of blobCache.values()) URL.revokeObjectURL(url)
+  blobCache.clear()
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', revokeAllBlobUrls)
+}
+
+/**
+ * Fetch a file via authenticated axios and return a blob URL.
+ * Cached so the same doc+type is only fetched once per session.
+ */
+export async function fetchFileBlobUrl(docId, type = 'original') {
+  const cacheKey = `${docId}:${type}`
+  if (blobCache.has(cacheKey)) return blobCache.get(cacheKey)
+
+  const res = await api.get(`/files/${docId}/${type}`, { responseType: 'blob' })
+  const url = URL.createObjectURL(res.data)
+  blobCache.set(cacheKey, url)
+  return url
+}
 
 // --- Auth ---
 export const login = (username, password) =>
@@ -64,10 +126,6 @@ export const retryDocument = (id) =>
 // --- Search ---
 export const searchDocuments = (params) =>
   api.get('/documents/search', { params })
-
-// --- Files ---
-export const getFileUrl = (docId, type = 'original') =>
-  `/api/v1/files/${docId}/${type}`
 
 // --- API Keys ---
 export const getApiKeys = () =>

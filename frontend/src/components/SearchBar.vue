@@ -12,11 +12,22 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted, watch } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
+const route = useRoute()
 const query = ref('')
+
+onMounted(() => {
+  if (route.query.q) {
+    query.value = route.query.q
+  }
+})
+
+watch(() => route.query.q, (q) => {
+  if (!q) query.value = ''
+})
 
 function doSearch() {
   const q = query.value.trim()
