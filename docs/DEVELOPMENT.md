@@ -519,18 +519,20 @@ DELETE /api/v1/api-keys/{id}
 ## 9. 扩展点设计
 
 ### 9.1 Milvus 向量检索
-- 预留接口: GET /api/v1/milvus/status
-- 代码位置: backend/services/vector_service.py (TODO: 阶段3实现)
+- 预留接口: GET /api/v1/milvus/status → {"status": "not_configured"}
+- 代码位置: backend/services/vector_service.py (TODO: 未来实现)
 - 文档入库时，可异步调用 embedding 服务生成向量
 
 ### 9.2 LLM 文档问答
-- 预留接口: GET /api/v1/chat/
-- 代码位置: backend/services/chat_service.py (TODO: 阶段3实现)
+- 预留接口: GET /api/v1/chat/ → {"code": 5010, "message": "LLM integration is not available yet."}
+- 代码位置: backend/services/chat_service.py (TODO: 未来实现)
 - 接收问题 + 文档 ID，返回回答
 
 ### 9.3 API Key 管理
-- 骨架已实现 (model + schema)
-- 完整 CRUD 在阶段3
+- 完整 CRUD 已实现 (model + schema + router)
+- API Key 鉴权已接入 middleware (Authorization: Bearer sk-xxx)
+- 支持过期时间、活跃状态检查、last_used_at 自动更新
+- API Key 以 SHA256 哈希存储，原始 key 仅创建时返回一次
 
 ### 9.4 异步任务队列
 - 当前: 同步处理文档 (processing_service)
@@ -558,7 +560,12 @@ DELETE /api/v1/api-keys/{id}
 - status 字段完整生命周期 (processing -> ready / error)
 
 ### 阶段3: 前端 + 扩展 + 部署
-- Vue3 前端
-- API Key 系统
-- 预留接口
-- 部署配置
+- Vue3 + Vite 前端 (Pinia 状态管理, Vue Router, axios 封装)
+- 登录页 / 文档列表(含状态标签+重试) / 文档阅读(PDF/图片/Markdown)
+- 搜索功能 (FTS5 集成, URL query 参数驱动)
+- API Key 鉴权接入 middleware (JWT + API Key 双重支持)
+- 预留接口保持 placeholder (chat 5010, milvus not_configured)
+- nginx.conf 生产反代 (/storage/ 代理到后鉴权后端)
+- run.sh 一键启动 (自动构建前端 + 启动后端)
+- FastAPI SPA fallback (前端静态文件直接由后端服务)
+- README.md 项目文档

@@ -1,65 +1,109 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
 
-echo "=== Personal Research Manager ==="
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
 
-# Check Python version
-PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
-echo "Python version: $PYTHON_VERSION"
+info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
+warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
+error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
-# Create virtual environment if not exists
-if [ ! -d "venv" ]; then
-    echo "Creating virtual environment..."
-    python3 -m venv venv
-fi
+info "=== BoKe - Personal Research Portal ==="
 
-# Activate virtual environment
-source venv/bin/activate
-
-# Install dependencies
-echo "Installing dependencies..."
-pip install -q -r requirements.txt
-
-# Check .env file
-if [ ! -f ".env" ]; then
-    echo "WARNING: .env file not found. Copying from .env.example..."
-    echo "Please edit .env and set JWT_SECRET_KEY and ADMIN_PASSWORD."
-    cp .env.example .env
+# --- Python check ---
+if ! command -v python3 &>/dev/null; then
+    error "Python 3 not found"
     exit 1
 fi
 
-# Source .env
+PYTHON=python3
+PY_VER=$($PYTHON -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+info "Python version: $PY_VER"
+
+# --- Virtual environment ---
+if [ ! -d "venv" ]; then
+    info "Creating virtual environment..."
+    $PYTHON -m venv venv
+fi
+source venv/bin/activate
+
+# --- Install dependencies ---
+info "Installing Python dependencies..."
+pip install -q -r requirements.txt
+
+# --- Environment variables ---
+if [ ! -f ".env" ]; then
+    if [ -f ".env.example" ]; then
+        cp .env.example .env
+        warn ".env created from .env.example — edit it before running!"
+        echo ""
+        echo "  Required variables:"
+        echo "    JWT_SECRET_KEY  (>= 32 chars, generate: openssl rand -hex 32)"
+        echo "    ADMIN_PASSWORD  (your admin password)"
+        echo ""
+        exit 1
+    else
+        error ".env file not found and no .env.example"
+        exit 1
+    fi
+fi
+
 set -a
 source .env
 set +a
 
-# Validate required variables
-if [ -z "${JWT_SECRET_KEY:-}" ] || [ "$JWT_SECRET_KEY" = "change-me-to-a-random-64-char-hex-string-at-least-32-chars" ]; then
-    echo "ERROR: JWT_SECRET_KEY must be set to a secure value."
-    echo "Generate one with: openssl rand -hex 32"
+# --- Validate required vars ---
+if [ -z "${JWT_SECRET_KEY:-}" ] || [ ${#JWT_SECRET_KEY} -lt 32 ]; then
+    error "JWT_SECRET_KEY must be set and >= 32 characters"
+    echo "  Generate with: openssl rand -hex 32"
     exit 1
 fi
 
-if [ -z "${ADMIN_PASSWORD:-}" ] || [ "$ADMIN_PASSWORD" = "change-me-to-a-strong-password" ]; then
-    echo "ERROR: ADMIN_PASSWORD must be set to a secure value."
+if [ -z "${ADMIN_PASSWORD:-}" ]; then
+    error "ADMIN_PASSWORD must be set"
     exit 1
 fi
 
-# Create directories
+# --- Create directories ---
 mkdir -p data storage
 
-# Run Alembic migrations
-echo "Running database migrations..."
-alembic upgrade head 2>/dev/null || {
-    echo "Alembic not configured yet, using direct table creation..."
-}
+# --- Database migrations ---
+info "Running database migrations..."
+alembic upgrade head 2>/dev/null || warn "Alembic migrations skipped (not configured)"
 
-# Start server
+# --- Frontend ---
+BUILD_FRONTEND="${BUILD_FRONTEND:-true}"
+if [ "$BUILD_FRONTEND" = "true" ] && [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
+    if ! command -v node &>/dev/null; then
+        warn "Node.js not found — skipping frontend build"
+        warn "Install Node.js 18+ to build the frontend"
+    else
+        info "Building frontend..."
+        cd frontend
+        npm install --silent 2>/dev/null
+        npm run build
+        cd "$SCRIPT_DIR"
+        info "Frontend built to frontend/dist/"
+    fi
+fi
+
+# --- Start server ---
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-8000}"
+RELOAD="${RELOAD:-true}"
+
 echo ""
-echo "Starting server on http://0.0.0.0:8000"
-echo "API docs: http://localhost:8000/docs"
+info "Starting BoKe on http://${HOST}:${PORT}"
+info "API docs: http://${HOST}:${PORT}/docs"
 echo ""
-uvicorn backend.main:app --host 0.0.0.0 --port 8000 --reload
+
+if [ "$RELOAD" = "true" ]; then
+    exec uvicorn backend.main:app --host "$HOST" --port "$PORT" --reload
+else
+    exec uvicorn backend.main:app --host "$HOST" --port "$PORT"
+fi

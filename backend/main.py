@@ -1,9 +1,12 @@
 from contextlib import asynccontextmanager
 
+from pathlib import Path
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from backend.config import CORS_ORIGINS, RATE_LIMIT_LOGIN
 from backend.database import engine, SessionLocal, Base
@@ -143,3 +146,19 @@ app.include_router(chat.router)
 app.include_router(milvus.router)
 app.include_router(api_keys.router)
 app.include_router(admin.router)
+
+# Serve Vue3 frontend (built static files)
+_FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+if _FRONTEND_DIST.is_dir():
+    app.mount("/assets", StaticFiles(directory=_FRONTEND_DIST / "assets"), name="static-assets")
+
+    @app.get("/{path:path}")
+    async def serve_spa(path: str):
+        """SPA fallback: serve static files or index.html for client-side routing.
+        Skips /api/ paths to preserve proper 404 responses."""
+        if path.startswith("api/"):
+            return JSONResponse(status_code=404, content={"code": 4004, "message": "Not found", "data": None})
+        file_path = _FRONTEND_DIST / path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(_FRONTEND_DIST / "index.html")
