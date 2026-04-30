@@ -343,7 +343,40 @@ onMounted(fetchDoc)
 .md-content :deep(table) { border-collapse: collapse; width: 100%; margin-bottom: 1rem; }
 .md-content :deep(th), .md-content :deep(td) { border: 1px solid var(--border); padding: 0.5rem; text-align: left; font-size: 0.875rem; }
 .md-content :deep(th) { background: var(--bg); }
-.md-content :deep(img) { max-width: 100%; border-radius: var(--radius); }
+.md-content :deep(img) {
+  max-width: 100%;
+  border-radius: var(--radius);
+  display: block;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--elevation-1);
+  transition: transform var(--transition-glass), box-shadow var(--transition-glass), background var(--transition-glass);
+  cursor: pointer;
+}
+.md-content :deep(img):hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: var(--elevation-3);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .md-content :deep(img) {
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--elevation-1), inset 0 1px 0 var(--glass-inset-highlight);
+  }
+  .md-content :deep(img):hover {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: var(--elevation-3), inset 0 1px 0 var(--glass-inset-highlight-hover);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .md-content :deep(img) { transition: none; }
+  .md-content :deep(img):hover { transform: none; }
+}
 
 /* Text viewer */
 .text-content {

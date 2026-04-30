@@ -43,6 +43,22 @@ function formatBytes(bytes) {
   gap: 0.875rem;
   padding: 1.125rem 1.375rem;
   cursor: default;
+  position: relative;
+  overflow: hidden;
+}
+.stats-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary), rgba(37, 99, 235, 0.3));
+  opacity: 0;
+  transition: opacity var(--transition-glass);
+}
+.stats-card:hover::before {
+  opacity: 1;
 }
 .stats-icon {
   font-size: 1.75rem;
@@ -53,17 +69,26 @@ function formatBytes(bytes) {
   align-items: center;
   justify-content: center;
   border-radius: 10px;
-  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.03));
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.1), rgba(37, 99, 235, 0.04));
+  transition: transform var(--transition-glass);
+}
+.stats-card:hover .stats-icon {
+  transform: scale(1.05);
 }
 .stats-value {
   font-size: 1.5rem;
   font-weight: 700;
   color: var(--text);
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 .stats-label {
   font-size: 0.8125rem;
   color: var(--text-secondary);
   margin-top: 0.125rem;
+}
+@media (prefers-reduced-motion: reduce) {
+  .stats-card::before { transition: none; }
+  .stats-icon { transition: none; }
 }
 </style>

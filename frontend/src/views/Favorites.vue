@@ -19,7 +19,7 @@
     </div>
 
     <div v-else-if="documents.length === 0" class="empty">
-      <div class="empty-icon">&#9734;</div>
+      <div class="empty-icon" aria-hidden="true">&#9734;</div>
       <p>暂无收藏，给文档添加星标即可在此查看！</p>
     </div>
     <div v-else class="doc-list">
@@ -56,6 +56,7 @@
             class="btn-icon fav-btn fav-active"
             @click.stop="handleRemoveFavorite(doc)"
             title="取消收藏"
+            aria-label="取消收藏"
           >
             &#9733;
           </button>
@@ -245,6 +246,12 @@ onMounted(fetchDocs)
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-card { animation: none; }
+  .skeleton-thumb, .skeleton-line { animation: none; }
+  .doc-thumb-img { transition: none; }
 }
 
 .pagination {

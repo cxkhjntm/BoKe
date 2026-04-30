@@ -101,7 +101,7 @@ async function handleLogout() {
   height: 2px;
   background: var(--text);
   border-radius: 2px;
-  transition: all var(--transition-fast);
+  transition: background var(--transition-fast), transform var(--transition-fast);
   position: absolute;
   left: 0.375rem;
 }

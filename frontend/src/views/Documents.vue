@@ -17,7 +17,7 @@
       </div>
       <div v-else-if="searchError" class="alert alert-error">{{ searchError }}</div>
       <div v-else-if="searchResults.length === 0" class="empty">
-        <div class="empty-icon">&#128269;</div>
+        <div class="empty-icon" aria-hidden="true">&#128269;</div>
         <p>未找到结果</p>
       </div>
       <div v-else class="doc-list">
@@ -73,7 +73,7 @@
         @drop.prevent="onDrop"
       >
         <div class="drop-zone-content">
-          <span class="drop-zone-icon">&#128220;</span>
+          <span class="drop-zone-icon" aria-hidden="true">&#128220;</span>
           <span>拖放文件到此处，或点击上传</span>
         </div>
       </div>
@@ -128,7 +128,7 @@
       </div>
 
       <div v-else-if="documents.length === 0" class="empty">
-        <div class="empty-icon">&#128196;</div>
+        <div class="empty-icon" aria-hidden="true">&#128196;</div>
         <p>暂无文档，上传你的第一份文档吧！</p>
       </div>
       <div v-else class="doc-list">
@@ -169,6 +169,7 @@
               :class="{ 'fav-active': doc.is_favorite }"
               @click.stop="handleToggleFavorite(doc)"
               :title="doc.is_favorite ? '取消收藏' : '添加收藏'"
+              :aria-label="doc.is_favorite ? '取消收藏' : '添加收藏'"
             >
               {{ doc.is_favorite ? '&#9733;' : '&#9734;' }}
             </button>
@@ -526,7 +527,7 @@ onBeforeUnmount(() => {
   padding: 1.25rem;
   margin-bottom: 1rem;
   text-align: center;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), background var(--transition-fast);
   background: var(--bg-card);
 }
 .drop-zone-active {
@@ -599,6 +600,12 @@ onBeforeUnmount(() => {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .doc-card { animation: none; }
+  .skeleton-thumb, .skeleton-line { animation: none; }
+  .doc-thumb-img { transition: none; }
 }
 
 /* Pagination */

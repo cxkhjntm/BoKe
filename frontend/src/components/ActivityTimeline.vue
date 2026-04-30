@@ -10,7 +10,7 @@
     <div v-else-if="activities.length === 0" class="empty-hint">暂无活动记录</div>
     <div v-else class="timeline">
       <div v-for="item in activities" :key="item.id" class="timeline-item">
-        <span class="timeline-icon">{{ actionIcon(item.action) }}</span>
+        <span class="timeline-icon" aria-hidden="true">{{ actionIcon(item.action) }}</span>
         <div class="timeline-body">
           <span class="timeline-action">{{ actionLabel(item.action) }}</span>
           <span v-if="item.document_title" class="timeline-doc">{{ item.document_title }}</span>
@@ -28,8 +28,8 @@ defineProps({
 })
 
 function actionIcon(action) {
-  const map = { upload: '&#128228;', view: '&#128065;', delete: '&#128465;', search: '&#128269;', favorite: '&#9733;' }
-  return map[action] || '&#8226;'
+  const map = { upload: '\u{1F4E4}', view: '\u{1F441}', delete: '\u{1F5D1}', search: '\u{1F50D}', favorite: '★' }
+  return map[action] || '•'
 }
 
 function actionLabel(action) {
@@ -55,6 +55,22 @@ function formatTime(ts) {
 <style scoped>
 .timeline-section {
   padding: 1rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+.timeline-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-glass);
+}
+.timeline-section:hover::before {
+  opacity: 0.6;
 }
 .section-title {
   font-size: 0.9375rem;
@@ -126,5 +142,8 @@ function formatTime(ts) {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-dot, .skeleton-line { animation: none; }
 }
 </style>

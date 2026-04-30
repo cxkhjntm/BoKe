@@ -46,12 +46,14 @@
   --alert-success-border: #bbf7d0;
 
   /* Glassmorphism variables */
-  --glass-bg: rgba(255, 255, 255, 0.55);
-  --glass-bg-hover: rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.45);
+  --glass-bg-hover: rgba(255, 255, 255, 0.65);
   --glass-blur: 12px;
-  --glass-blur-hover: 18px;
-  --glass-border: rgba(255, 255, 255, 0.35);
-  --glass-border-hover: rgba(255, 255, 255, 0.55);
+  --glass-blur-hover: 20px;
+  --glass-border: rgba(255, 255, 255, 0.3);
+  --glass-border-hover: rgba(255, 255, 255, 0.5);
+  --glass-inset-highlight: rgba(255, 255, 255, 0.4);
+  --glass-inset-highlight-hover: rgba(255, 255, 255, 0.6);
 
   /* Card elevation scale (multi-layer shadows) */
   --elevation-1: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
@@ -99,7 +101,7 @@ a:hover { text-decoration: underline; }
   color: var(--text);
   font-size: 0.875rem;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: border-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
   white-space: nowrap;
 }
 .btn:hover { border-color: var(--primary); color: var(--primary); box-shadow: var(--shadow-hover); }
@@ -141,15 +143,14 @@ a:hover { text-decoration: underline; }
 /* Cards — Glassmorphism base */
 .card {
   background: var(--bg-card);
-  border: 1px solid var(--border);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   box-shadow: var(--elevation-1);
-  transition: transform var(--transition-glass), box-shadow var(--transition-glass), backdrop-filter var(--transition-glass), -webkit-backdrop-filter var(--transition-glass), background var(--transition-glass), border-color var(--transition-glass);
+  transition: transform var(--transition-glass), box-shadow var(--transition-glass), background var(--transition-glass);
 }
 .card:hover {
-  transform: translateY(-3px) scale(1.01);
+  transform: translateY(-4px) scale(1.015);
   box-shadow: var(--elevation-3);
-  border-color: rgba(0, 0, 0, 0.06);
 }
 
 /* Glassmorphism — progressive enhancement */
@@ -158,15 +159,23 @@ a:hover { text-decoration: underline; }
     background: var(--glass-bg);
     backdrop-filter: blur(var(--glass-blur));
     -webkit-backdrop-filter: blur(var(--glass-blur));
-    border-color: var(--glass-border);
-    box-shadow: var(--elevation-1), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+    box-shadow: var(--elevation-1), inset 0 1px 0 var(--glass-inset-highlight);
   }
   .card:hover {
     background: var(--glass-bg-hover);
     backdrop-filter: blur(var(--glass-blur-hover));
     -webkit-backdrop-filter: blur(var(--glass-blur-hover));
-    border-color: var(--glass-border-hover);
-    box-shadow: var(--elevation-3), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+    box-shadow: var(--elevation-3), inset 0 1px 0 var(--glass-inset-highlight-hover);
+  }
+}
+
+/* Reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+  .card:hover {
+    transform: none;
   }
 }
 
@@ -229,6 +238,11 @@ a:hover { text-decoration: underline; }
   animation: spin 0.6s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner { animation: none; }
+  .card { animation: none; }
+}
 
 /* Empty state */
 .empty {

@@ -44,6 +44,22 @@ defineEmits(['navigate'])
 <style scoped>
 .recent-section {
   padding: 1rem 1.25rem;
+  position: relative;
+  overflow: hidden;
+}
+.recent-section::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--primary), transparent);
+  opacity: 0;
+  transition: opacity var(--transition-glass);
+}
+.recent-section:hover::before {
+  opacity: 0.6;
 }
 .section-title {
   font-size: 0.9375rem;
@@ -121,5 +137,8 @@ defineEmits(['navigate'])
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-dot, .skeleton-line { animation: none; }
 }
 </style>
