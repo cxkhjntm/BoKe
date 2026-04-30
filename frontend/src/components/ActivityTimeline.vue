@@ -55,22 +55,6 @@ function formatTime(ts) {
 <style scoped>
 .timeline-section {
   padding: 1rem 1.25rem;
-  position: relative;
-  overflow: hidden;
-}
-.timeline-section::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, var(--primary), transparent);
-  opacity: 0;
-  transition: opacity var(--transition-glass);
-}
-.timeline-section:hover::before {
-  opacity: 0.6;
 }
 .section-title {
   font-size: 0.9375rem;

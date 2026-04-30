@@ -11,6 +11,7 @@ celery = Celery(
     "boke",
     broker=REDIS_URL,
     backend=REDIS_URL,
+    include=["backend.tasks"],
 )
 
 celery.conf.update(
@@ -25,3 +26,6 @@ celery.conf.update(
     result_expires=300,
     task_default_queue="default",
 )
+
+# Force-import tasks so the worker registers them at startup
+import backend.tasks  # noqa: F401, E402
