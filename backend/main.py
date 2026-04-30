@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.exceptions import HTTPException
 
 from backend.config import CORS_ORIGINS, RATE_LIMIT_LOGIN
 from backend.database import engine, SessionLocal, Base
@@ -14,6 +15,7 @@ from backend.utils.logger import setup_logger, get_logger
 from backend.utils.response import fail
 from backend.exceptions.handlers import AppException, app_exception_handler, global_exception_handler
 from backend.middleware.rate_limit import RateLimitMiddleware
+from backend.middleware.logging import RequestLoggingMiddleware
 from backend.services.auth_service import init_admin
 
 from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health, admin
@@ -118,6 +120,16 @@ async def validation_exception_handler(_request: Request, exc: RequestValidation
         content={"code": 4000, "message": "Validation error", "data": exc.errors()},
     )
 
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_request: Request, exc: HTTPException):
+    # Normalize HTTPException detail to unified response format
+    if isinstance(exc.detail, dict):
+        content = exc.detail
+    else:
+        content = {"code": exc.status_code * 10 + 1, "message": str(exc.detail), "data": None}
+    return JSONResponse(status_code=exc.status_code, content=content)
+
 # CORS
 app.add_middleware(
     CORSMiddleware,
@@ -135,6 +147,9 @@ app.add_middleware(
         "/api/v1/auth/refresh": (10, 60),
     },
 )
+
+# Request logging (outermost middleware after CORS)
+app.add_middleware(RequestLoggingMiddleware)
 
 # Routers (search before documents to avoid /search matching /{doc_id})
 app.include_router(health.router)

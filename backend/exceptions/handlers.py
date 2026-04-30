@@ -14,6 +14,10 @@ class AppException(Exception):
 
 
 async def app_exception_handler(_request: Request, exc: AppException) -> JSONResponse:
+    if exc.status_code >= 500:
+        logger.error("AppException %d: %s", exc.code, exc.message)
+    else:
+        logger.warning("AppException %d: %s", exc.code, exc.message)
     return JSONResponse(
         status_code=exc.status_code,
         content={"code": exc.code, "message": exc.message, "data": None},

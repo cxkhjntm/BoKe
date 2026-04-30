@@ -46,9 +46,11 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                 key = f"{client_ip}:{pattern}"
                 self._cleanup(key, window_sec)
 
+                remaining = max(0, max_req - len(self._windows[key]))
+
                 if len(self._windows[key]) >= max_req:
                     logger.warning("Rate limit exceeded for %s on %s", client_ip, pattern)
-                    return JSONResponse(
+                    response = JSONResponse(
                         status_code=429,
                         content={
                             "code": 4029,
@@ -56,8 +58,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
                             "data": None,
                         },
                     )
+                    response.headers["X-RateLimit-Limit"] = str(max_req)
+                    response.headers["X-RateLimit-Remaining"] = "0"
+                    return response
 
                 self._windows[key].append(time.time())
-                break
+                response = await call_next(request)
+                response.headers["X-RateLimit-Limit"] = str(max_req)
+                response.headers["X-RateLimit-Remaining"] = str(remaining)
+                return response
 
         return await call_next(request)

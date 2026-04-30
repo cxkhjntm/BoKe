@@ -69,8 +69,9 @@ BoKe/
 │   │   └── processing_service.py # 文档处理管线（文本提取+缩略图编排）
 │   ├── middleware/
 │   │   ├── __init__.py
-│   │   ├── auth.py              # JWT 中间件
-│   │   └── rate_limit.py        # 限流中间件
+│   │   ├── auth.py              # JWT 中间件（含审计日志）
+│   │   ├── logging.py           # 请求日志中间件
+│   │   └── rate_limit.py        # 限流中间件（含 X-RateLimit 头）
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   ├── response.py          # 统一响应工具
@@ -78,7 +79,21 @@ BoKe/
 │   │   └── logger.py            # 日志配置
 │   └── exceptions/
 │       ├── __init__.py
-│       └── handlers.py          # 统一异常处理
+│       └── handlers.py          # 统一异常处理（含日志）
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py              # 测试 fixtures（DB、客户端、认证、样本文件）
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── test_auth_service.py
+│   │   ├── test_extract_service.py
+│   │   ├── test_file_service.py
+│   │   └── test_processing_service.py
+│   └── api/
+│       ├── __init__.py
+│       ├── test_auth.py
+│       ├── test_documents.py
+│       └── test_health.py
 ├── frontend/
 │   ├── package.json
 │   ├── vite.config.js
@@ -586,16 +601,125 @@ Upload Request
        └─ [Redis unavailable] processing_service.process_document(db, doc) [同步]
 ```
 
-## 10. 开发阶段划分
+## 10. 可观测性
 
-### 阶段1: 核心后端系统
+### 10.1 请求日志中间件
+
+`backend/middleware/logging.py` — 记录每个 API 请求：
+
+```
+[2026-04-30 10:00:00] INFO middleware.logging: POST /api/v1/auth/login 200 45.2ms rid=a1b2c3d4e5f6
+```
+
+- 格式: `METHOD PATH STATUS_CODE LATENCY_MS rid=REQUEST_ID`
+- 自动生成 `X-Request-ID`（如请求头未携带）
+- 排除静态资源请求（`/assets/`）
+- 响应头包含 `X-Request-ID` 用于前端关联
+
+### 10.2 认证失败审计日志
+
+`backend/middleware/auth.py` — 所有认证失败场景记录 WARNING 级别日志：
+
+- 无凭证访问
+- Token 过期
+- Token 无效
+- Token 类型错误
+- 用户不存在或已禁用
+- API Key 无效/过期/已禁用
+
+日志包含客户端 IP 地址（支持 X-Forwarded-For）。
+
+### 10.3 异常处理日志
+
+`backend/exceptions/handlers.py`：
+
+- 4xx AppException: WARNING 级别
+- 5xx AppException: ERROR 级别
+- 未处理异常: ERROR 级别（含堆栈）
+- HTTPException: 统一响应格式处理
+
+### 10.4 限流响应头
+
+限流中间件返回 `X-RateLimit-Limit` 和 `X-RateLimit-Remaining` 响应头：
+
+```
+X-RateLimit-Limit: 5
+X-RateLimit-Remaining: 3
+```
+
+触发限流时返回 HTTP 429 + `{"code": 4029, "message": "Too many requests"}`。
+
+## 11. 测试
+
+### 11.1 测试框架
+
+- pytest >= 8.0
+- pytest-cov >= 5.0 (覆盖率报告)
+- httpx >= 0.27 (FastAPI TestClient)
+
+### 11.2 运行测试
+
+```bash
+# 运行全部测试
+pytest tests/ -v
+
+# 运行服务层单元测试
+pytest tests/services/ -v
+
+# 运行 API 集成测试
+pytest tests/api/ -v
+
+# 查看覆盖率报告
+pytest tests/ --cov=backend --cov-report=term-missing
+```
+
+### 11.3 测试结构
+
+```
+tests/
+├── conftest.py              # 共享 fixtures
+├── services/                # 服务层单元测试
+│   ├── test_auth_service.py     # 认证、Token 刷新、登出、账户锁定
+│   ├── test_extract_service.py  # PDF/DOCX/MD 文本提取
+│   ├── test_file_service.py     # 文件保存/删除/路径遍历防护
+│   └── test_processing_service.py # 处理管线（成功/失败/部分成功）
+└── api/                     # API 集成测试
+    ├── test_auth.py             # 登录/刷新/登出端点
+    ├── test_documents.py        # 文档 CRUD + 上传 + 重试
+    └── test_health.py           # 健康检查端点
+```
+
+### 11.4 测试 Fixtures
+
+| Fixture | 作用域 | 说明 |
+|---------|--------|------|
+| `tmp_storage` | session | 临时存储目录 |
+| `db_engine` | function | 每个测试独立的 SQLite 数据库 |
+| `db_session` | function | 事务性数据库 session（自动回滚） |
+| `client` | function | FastAPI TestClient（DB + 存储覆盖） |
+| `admin_user` | function | 创建测试管理员用户 |
+| `auth_headers` | function | 有效 JWT Bearer Token |
+| `sample_pdf` | function | 最小有效 PDF 文件 |
+| `sample_docx` | function | 最小有效 DOCX 文件 |
+| `sample_markdown` | function | 最小 Markdown 文件 |
+| `sample_image` | function | 最小有效 PNG 图片 |
+
+### 11.5 覆盖率目标
+
+- 服务层: >= 80%
+- API 层: >= 70%
+- 总体: >= 60%
+
+## 12. 开发阶段划分
+
+### 阶段 A: 核心后端系统
 - FastAPI 项目结构
 - JWT + Refresh Token
 - 文档上传 (安全校验)
 - SQLite + Alembic
 - 文档 CRUD
 
-### 阶段2: 内容处理 + 搜索
+### 阶段 B: 内容处理 + 搜索
 - PDF/DOCX/Markdown 文本提取 (extract_service)
 - 全类型缩略图生成 (thumbnail_service: PDF/图片实际渲染, DOCX/MD 带标签图标)
 - 文档处理管线模块化 (processing_service: 独立错误隔离, Celery 兼容)
@@ -604,7 +728,24 @@ Upload Request
 - 管理接口 (POST /admin/fts-rebuild)
 - status 字段完整生命周期 (queued -> processing -> ready / error)
 
-### 阶段3: 前端 + 扩展 + 部署
+### 阶段 C: 异步任务队列
+- Celery + Redis 异步文档处理
+- 文档状态机: queued → processing → ready / error
+- Redis 不可用时自动回退同步处理
+- 前端轮询状态更新 (3 秒间隔)
+- run.sh 自动检测 Redis + 启动 Celery worker
+
+### 阶段 D: 可观测性 + 测试 + 安全加固
+- 请求日志中间件 (X-Request-ID 关联)
+- 认证失败审计日志
+- AppException 日志 (4xx WARNING / 5xx ERROR)
+- HTTPException 统一响应格式
+- 限流响应头 (X-RateLimit-Limit / X-RateLimit-Remaining)
+- pytest 测试基础设施 (52 个测试, 覆盖率 >= 60%)
+- 服务层单元测试 (extract, file, processing, auth)
+- API 集成测试 (health, auth, documents)
+
+### 阶段 E: 前端 + 扩展 + 部署
 - Vue3 + Vite 前端 (Pinia 状态管理, Vue Router, axios 封装)
 - 登录页 / 文档列表(含状态标签+重试) / 文档阅读(PDF/图片/Markdown)
 - 搜索功能 (FTS5 集成, URL query 参数驱动)
