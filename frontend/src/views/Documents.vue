@@ -6,19 +6,37 @@
         <h1 class="page-title">Search: "{{ searchQuery }}"</h1>
         <router-link to="/" class="btn btn-sm">Back to documents</router-link>
       </div>
-      <div v-if="searchLoading" class="empty"><span class="spinner"></span></div>
+      <div v-if="searchLoading" class="skeleton-list">
+        <div v-for="i in 3" :key="i" class="card skeleton-card">
+          <div class="skeleton-thumb"></div>
+          <div class="skeleton-lines">
+            <div class="skeleton-line skeleton-line-title"></div>
+            <div class="skeleton-line skeleton-line-meta"></div>
+          </div>
+        </div>
+      </div>
       <div v-else-if="searchError" class="alert alert-error">{{ searchError }}</div>
       <div v-else-if="searchResults.length === 0" class="empty">
-        <div class="empty-icon">🔍</div>
+        <div class="empty-icon">&#128269;</div>
         <p>No results found</p>
       </div>
       <div v-else class="doc-list">
-        <div v-for="item in searchResults" :key="item.id" class="card doc-card" @click="goToReader(item.id)">
-          <div class="doc-card-body">
+        <div
+          v-for="(item, idx) in searchResults"
+          :key="item.id"
+          class="card doc-card"
+          :style="{ animationDelay: idx * 80 + 'ms' }"
+          @click="goToReader(item.id)"
+        >
+          <div class="doc-card-visual">
+            <span class="file-type-icon" :class="'ft-' + item.file_type">
+              {{ item.file_type.toUpperCase() }}
+            </span>
+          </div>
+          <div class="doc-card-info">
             <div class="doc-title">{{ item.title }}</div>
             <div class="doc-meta">
               <span class="badge" :class="'badge-' + item.status">{{ statusLabel(item.status) }}</span>
-              <span class="doc-type">{{ item.file_type.toUpperCase() }}</span>
               <span>{{ formatDate(item.created_at) }}</span>
             </div>
             <div v-if="item.snippet" class="doc-snippet">{{ item.snippet }}</div>
@@ -31,19 +49,32 @@
     <template v-else>
       <div class="page-header">
         <h1 class="page-title">Documents</h1>
-        <div style="display:flex; gap:0.5rem; align-items:center;">
-          <label class="btn btn-primary btn-sm" :class="{ disabled: uploading }">
-            <span v-if="uploading" class="spinner"></span>
-            {{ uploading ? `${uploadProgress}%` : 'Upload' }}
-            <input
-              ref="fileInput"
-              type="file"
-              accept=".pdf,.docx,.md,.png,.jpg,.jpeg"
-              hidden
-              :disabled="uploading"
-              @change="handleUpload"
-            />
-          </label>
+        <label class="btn btn-primary btn-sm" :class="{ disabled: uploading }">
+          <span v-if="uploading" class="spinner"></span>
+          {{ uploading ? `${uploadProgress}%` : 'Upload' }}
+          <input
+            ref="fileInput"
+            type="file"
+            accept=".pdf,.docx,.md,.png,.jpg,.jpeg"
+            hidden
+            :disabled="uploading"
+            @change="handleUpload"
+          />
+        </label>
+      </div>
+
+      <!-- Drag-drop zone -->
+      <div
+        class="drop-zone"
+        :class="{ 'drop-zone-active': dragging }"
+        @dragenter.prevent="onDragEnter"
+        @dragover.prevent
+        @dragleave.prevent="onDragLeave"
+        @drop.prevent="onDrop"
+      >
+        <div class="drop-zone-content">
+          <span class="drop-zone-icon">&#128220;</span>
+          <span>Drag & drop files here, or click Upload</span>
         </div>
       </div>
 
@@ -51,8 +82,8 @@
       <div v-if="uploadSuccess" class="alert alert-success">Document uploaded successfully!</div>
       <div v-if="listError" class="alert alert-error">{{ listError }}</div>
 
-      <!-- Filters -->
-      <div class="filters">
+      <!-- Filter bar with clearable tags -->
+      <div class="filter-bar">
         <select v-model="filters.status" class="input filter-select" @change="onFilterChange">
           <option value="">All Status</option>
           <option value="queued">Queued</option>
@@ -68,35 +99,61 @@
           <option value="png">PNG</option>
           <option value="jpg">JPG</option>
         </select>
+        <div v-if="hasActiveFilters" class="filter-tags">
+          <span v-if="filters.status" class="filter-tag" @click="clearFilter('status')">
+            {{ statusLabel(filters.status) }} &times;
+          </span>
+          <span v-if="filters.file_type" class="filter-tag" @click="clearFilter('file_type')">
+            {{ filters.file_type.toUpperCase() }} &times;
+          </span>
+        </div>
       </div>
 
-      <div v-if="loading" class="empty"><span class="spinner"></span></div>
+      <!-- Skeleton loading -->
+      <div v-if="loading" class="skeleton-list">
+        <div v-for="i in 5" :key="i" class="card skeleton-card">
+          <div class="skeleton-thumb"></div>
+          <div class="skeleton-lines">
+            <div class="skeleton-line skeleton-line-title"></div>
+            <div class="skeleton-line skeleton-line-meta"></div>
+          </div>
+        </div>
+      </div>
+
       <div v-else-if="documents.length === 0" class="empty">
-        <div class="empty-icon">📄</div>
+        <div class="empty-icon">&#128196;</div>
         <p>No documents yet. Upload your first document!</p>
       </div>
       <div v-else class="doc-list">
-        <div v-for="doc in documents" :key="doc.id" class="card doc-card">
-          <div class="doc-card-body" @click="goToReader(doc.id)">
-            <div class="doc-card-thumb" v-if="doc.status === 'ready' && doc.thumbnail_path">
-              <img
-                :src="thumbUrl(doc.id)"
-                :alt="doc.title"
-                loading="lazy"
-                @error="$event.target.style.display='none'"
-              />
+        <div
+          v-for="(doc, idx) in documents"
+          :key="doc.id"
+          class="card doc-card"
+          :style="{ animationDelay: idx * 80 + 'ms' }"
+        >
+          <div class="doc-card-visual" @click="goToReader(doc.id)">
+            <img
+              v-if="doc.status === 'ready' && doc.thumbnail_path"
+              :src="thumbUrl(doc.id)"
+              :alt="doc.title"
+              class="doc-thumb-img"
+              loading="lazy"
+              @error="$event.target.style.display='none'"
+            />
+            <span v-else class="file-type-icon" :class="'ft-' + doc.file_type">
+              {{ doc.file_type.toUpperCase() }}
+            </span>
+          </div>
+          <div class="doc-card-info" @click="goToReader(doc.id)">
+            <div class="doc-title">{{ doc.title }}</div>
+            <div class="doc-meta">
+              <span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span>
+              <span class="doc-type">{{ doc.file_type.toUpperCase() }}</span>
+              <span>{{ formatSize(doc.file_size) }}</span>
+              <span>{{ formatDate(doc.created_at) }}</span>
             </div>
-            <div class="doc-card-info">
-              <div class="doc-title">{{ doc.title }}</div>
-              <div class="doc-meta">
-                <span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span>
-                <span class="doc-type">{{ doc.file_type.toUpperCase() }}</span>
-                <span>{{ formatSize(doc.file_size) }}</span>
-                <span>{{ formatDate(doc.created_at) }}</span>
-              </div>
-              <div v-if="doc.status === 'error' && doc.error_message" class="doc-error">
-                {{ doc.error_message }}
-              </div>
+            <div v-if="doc.status === 'error' && doc.error_message" class="doc-error">
+              {{ doc.error_message }}
             </div>
           </div>
           <div class="doc-card-actions">
@@ -133,6 +190,7 @@
 import { ref, reactive, onMounted, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments } from '../api'
+import { formatDate, formatSize, statusLabel } from '../utils/format'
 
 const route = useRoute()
 const router = useRouter()
@@ -144,6 +202,8 @@ const page = ref(1)
 const limit = 20
 const total = ref(0)
 const filters = reactive({ status: '', file_type: '' })
+const dragging = ref(false)
+let dragCounter = 0
 
 const uploading = ref(false)
 const uploadProgress = ref(0)
@@ -153,15 +213,14 @@ const fileInput = ref(null)
 const deletingId = ref(null)
 const retryingId = ref(null)
 
-// Search state
 const searchQuery = computed(() => route.query.q || '')
 const isSearch = computed(() => !!route.query.q)
 const searchResults = ref([])
 const searchLoading = ref(false)
 const searchError = ref('')
 
-// Auth token for img src
 const authToken = computed(() => localStorage.getItem('access_token') || '')
+const hasActiveFilters = computed(() => filters.status || filters.file_type)
 
 function thumbUrl(docId) {
   return `/api/v1/files/${docId}/thumbnail?token=${encodeURIComponent(authToken.value)}`
@@ -208,9 +267,38 @@ function onFilterChange() {
   fetchDocs()
 }
 
+function clearFilter(key) {
+  filters[key] = ''
+  onFilterChange()
+}
+
+function onDragEnter() {
+  dragCounter++
+  dragging.value = true
+}
+
+function onDragLeave() {
+  dragCounter--
+  if (dragCounter <= 0) {
+    dragging.value = false
+    dragCounter = 0
+  }
+}
+
+function onDrop(e) {
+  dragging.value = false
+  dragCounter = 0
+  const file = e.dataTransfer?.files?.[0]
+  if (file) uploadFile(file)
+}
+
 async function handleUpload(e) {
   const file = e.target.files?.[0]
   if (!file) return
+  uploadFile(file)
+}
+
+async function uploadFile(file) {
   uploading.value = true
   uploadError.value = ''
   uploadSuccess.value = false
@@ -261,27 +349,10 @@ function goToReader(id) {
   router.push(`/documents/${id}`)
 }
 
-function formatDate(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
-}
-
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
-
-function statusLabel(s) {
-  return { queued: 'Queued', processing: 'Processing', ready: 'Ready', error: 'Error' }[s] || s
-}
-
-// Watch search query — handle both present and absent
 watch(() => route.query.q, (q) => {
   if (q) {
     doSearch(q)
   } else if (route.path === '/') {
-    // Switched back to normal list mode
     page.value = 1
     fetchDocs()
   }
@@ -297,31 +368,63 @@ onMounted(() => {
 </script>
 
 <style scoped>
+/* Stagger animation */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 .doc-list { display: flex; flex-direction: column; gap: 0.625rem; }
-.doc-card { display: flex; align-items: stretch; cursor: pointer; transition: box-shadow 0.15s; }
-.doc-card:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
-.doc-card-body {
-  flex: 1;
+
+.doc-card {
   display: flex;
-  gap: 0.75rem;
-  padding: 0.875rem 1rem;
+  align-items: stretch;
+  cursor: pointer;
+  transition: box-shadow var(--transition-fast);
+  animation: cardIn var(--transition-normal) both;
+}
+.doc-card:hover { box-shadow: var(--shadow-hover); }
+
+/* Dual-zone card: visual left + info right */
+.doc-card-visual {
+  flex-shrink: 0;
+  width: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  border-radius: var(--radius) 0 0 var(--radius);
+  overflow: hidden;
+}
+.doc-thumb-img { width: 100%; height: 100%; object-fit: cover; }
+
+.file-type-icon {
+  font-family: var(--font-mono);
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  background: var(--border);
+  color: var(--text-secondary);
+}
+.ft-pdf { background: #fee2e2; color: #991b1b; }
+.ft-docx { background: #dbeafe; color: #1e40af; }
+.ft-md { background: #dcfce7; color: #166534; }
+.ft-png, .ft-jpg, .ft-jpeg { background: #fef9c3; color: #854d0e; }
+
+.doc-card-info {
+  flex: 1;
+  padding: 0.75rem 1rem;
   min-width: 0;
 }
-.doc-card-thumb {
-  flex-shrink: 0;
-  width: 48px;
-  height: 48px;
-  border-radius: 6px;
-  overflow: hidden;
-  background: var(--bg);
-}
-.doc-card-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.doc-card-info { flex: 1; min-width: 0; }
 .doc-title { font-weight: 600; font-size: 0.9375rem; margin-bottom: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-meta { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--text-secondary); flex-wrap: wrap; }
 .doc-type { font-family: var(--font-mono); font-size: 0.75rem; }
 .doc-error { font-size: 0.8125rem; color: var(--danger); margin-top: 0.25rem; }
 .doc-snippet { font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.375rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
 .doc-card-actions {
   display: flex;
   align-items: center;
@@ -329,12 +432,90 @@ onMounted(() => {
   padding: 0 0.75rem;
   border-left: 1px solid var(--border);
 }
-.filters {
+
+/* Drag-drop zone */
+.drop-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+  text-align: center;
+  transition: all var(--transition-fast);
+  background: var(--bg-card);
+}
+.drop-zone-active {
+  border-color: var(--primary);
+  background: var(--primary-focus-ring);
+}
+.drop-zone-content {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+.drop-zone-icon { font-size: 1.5rem; }
+
+/* Filter bar */
+.filter-bar {
   display: flex;
   gap: 0.5rem;
   margin-bottom: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
 }
 .filter-select { width: auto; min-width: 120px; font-size: 0.8125rem; padding: 0.375rem 0.625rem; }
+
+.filter-tags { display: flex; gap: 0.375rem; }
+.filter-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.625rem;
+  background: var(--primary-focus-ring);
+  color: var(--primary);
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+.filter-tag:hover { background: var(--border); }
+
+/* Skeleton loading */
+.skeleton-list { display: flex; flex-direction: column; gap: 0.625rem; }
+.skeleton-card {
+  display: flex;
+  align-items: center;
+  padding: 0.875rem 1rem;
+  gap: 0.75rem;
+}
+.skeleton-thumb {
+  width: 64px;
+  height: 48px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  flex-shrink: 0;
+}
+.skeleton-lines { flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
+.skeleton-line {
+  height: 0.875rem;
+  border-radius: 4px;
+  background: linear-gradient(90deg, var(--border) 25%, var(--bg) 50%, var(--border) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+.skeleton-line-title { width: 60%; }
+.skeleton-line-meta { width: 40%; }
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Pagination */
 .pagination {
   display: flex;
   align-items: center;
@@ -346,10 +527,11 @@ onMounted(() => {
 .disabled { opacity: 0.5; pointer-events: none; }
 
 @media (max-width: 640px) {
-  .doc-card-body { padding: 0.625rem 0.75rem; }
-  .doc-card-thumb { display: none; }
+  .doc-card-visual { width: 48px; }
+  .doc-card-info { padding: 0.625rem 0.75rem; }
   .doc-card-actions { flex-direction: column; padding: 0.5rem; border-left: none; border-top: 1px solid var(--border); }
-  .filters { flex-direction: column; }
+  .filter-bar { flex-direction: column; }
   .filter-select { width: 100%; }
+  .drop-zone { padding: 1rem; }
 }
 </style>

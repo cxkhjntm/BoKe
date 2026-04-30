@@ -1,7 +1,7 @@
 <template>
   <div id="app">
     <AppNavbar v-if="authStore.isAuthenticated" />
-    <main class="container" style="padding-top: 1.5rem; padding-bottom: 2rem;">
+    <main class="container app-main">
       <router-view />
     </main>
   </div>
@@ -13,3 +13,7 @@ import AppNavbar from './components/AppNavbar.vue'
 
 const authStore = useAuthStore()
 </script>
+
+<style scoped>
+.app-main { padding-top: var(--spacing-lg); padding-bottom: 2rem; }
+</style>

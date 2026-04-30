@@ -1,8 +1,11 @@
 <template>
   <nav class="navbar">
     <div class="container navbar-inner">
-      <router-link to="/" class="navbar-brand">📚 BoKe</router-link>
-      <div class="navbar-actions">
+      <router-link to="/" class="navbar-brand">BoKe</router-link>
+      <button class="navbar-toggle" @click="mobileOpen = !mobileOpen" aria-label="Toggle menu">
+        <span :class="{ open: mobileOpen }"></span>
+      </button>
+      <div class="navbar-actions" :class="{ 'navbar-actions-open': mobileOpen }">
         <SearchBar />
         <button class="btn btn-sm" @click="handleLogout">Logout</button>
       </div>
@@ -11,12 +14,14 @@
 </template>
 
 <script setup>
+import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import SearchBar from './SearchBar.vue'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const mobileOpen = ref(false)
 
 async function handleLogout() {
   await authStore.logout()
@@ -51,5 +56,53 @@ async function handleLogout() {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+}
+
+/* Mobile hamburger */
+.navbar-toggle {
+  display: none;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  width: 2rem;
+  height: 2rem;
+  position: relative;
+}
+.navbar-toggle span,
+.navbar-toggle span::before,
+.navbar-toggle span::after {
+  display: block;
+  width: 1.25rem;
+  height: 2px;
+  background: var(--text);
+  border-radius: 2px;
+  transition: all var(--transition-fast);
+  position: absolute;
+  left: 0.375rem;
+}
+.navbar-toggle span { top: 50%; transform: translateY(-50%); }
+.navbar-toggle span::before { content: ''; top: -6px; }
+.navbar-toggle span::after { content: ''; top: 6px; }
+.navbar-toggle span.open { background: transparent; }
+.navbar-toggle span.open::before { top: 0; transform: rotate(45deg); }
+.navbar-toggle span.open::after { top: 0; transform: rotate(-45deg); }
+
+@media (max-width: 640px) {
+  .navbar-toggle { display: flex; align-items: center; justify-content: center; }
+  .navbar-actions {
+    display: none;
+    position: absolute;
+    top: 3.5rem;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
+    box-shadow: var(--shadow);
+  }
+  .navbar-actions-open { display: flex; }
 }
 </style>

@@ -2,7 +2,7 @@
   <div>
     <div class="page-header">
       <div>
-        <router-link to="/" class="back-link">← Documents</router-link>
+        <router-link to="/" class="back-link">&larr; Documents</router-link>
         <h1 class="page-title" style="margin-top:0.25rem;">{{ doc?.title || 'Loading...' }}</h1>
         <div v-if="doc" class="doc-meta">
           <span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span>
@@ -11,13 +11,13 @@
           <span>{{ formatDate(doc.created_at) }}</span>
         </div>
       </div>
-      <div v-if="doc" style="display:flex; gap:0.5rem;">
+      <div v-if="doc" class="header-actions">
         <button class="btn btn-sm" @click="openOriginal" :disabled="fileLoading">
           {{ fileLoading ? 'Loading...' : 'Open Original' }}
         </button>
         <button
           v-if="doc.status === 'error'"
-          class="btn btn-sm"
+          class="btn btn-sm btn-primary"
           @click="handleRetry"
           :disabled="retrying"
         >
@@ -27,63 +27,104 @@
     </div>
 
     <div v-if="loading" class="empty"><span class="spinner"></span></div>
-    <div v-else-if="error" class="alert alert-error">{{ error }}</div>
-    <div v-else-if="doc" class="reader-content card">
-      <!-- Status messages -->
-      <div v-if="doc.status === 'queued'" class="reader-status">
-        <span class="spinner"></span>
-        <span>Document is queued for processing...</span>
-      </div>
-      <div v-else-if="doc.status === 'processing'" class="reader-status">
-        <span class="spinner"></span>
-        <span>Document is being processed...</span>
-      </div>
-      <div v-else-if="doc.status === 'error'" class="reader-status reader-status-error">
-        <span>Processing failed: {{ doc.error_message || 'Unknown error' }}</span>
+    <div v-else-if="error" class="alert alert-error">
+      {{ error }}
+      <button class="btn btn-sm" style="margin-left:0.5rem;" @click="fetchDoc">Retry</button>
+    </div>
+    <div v-else-if="doc" class="reader-layout">
+      <!-- Main content area -->
+      <div class="reader-content card">
+        <!-- Status messages -->
+        <div v-if="doc.status === 'queued'" class="reader-status">
+          <span class="spinner"></span>
+          <span>Document is queued for processing...</span>
+        </div>
+        <div v-else-if="doc.status === 'processing'" class="reader-status">
+          <span class="spinner"></span>
+          <span>Document is being processed...</span>
+        </div>
+        <div v-else-if="doc.status === 'error'" class="reader-status reader-status-error">
+          <span>Processing failed: {{ doc.error_message || 'Unknown error' }}</span>
+          <button class="btn btn-sm btn-primary" @click="handleRetry" :disabled="retrying" style="margin-left:auto;">
+            {{ retrying ? 'Retrying...' : 'Retry' }}
+          </button>
+        </div>
+
+        <!-- PDF viewer -->
+        <div v-if="doc.file_type === 'pdf' && doc.status === 'ready'" class="pdf-viewer">
+          <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading PDF...</div>
+          <iframe v-else-if="fileBlobUrl" :src="fileBlobUrl" class="pdf-frame" title="PDF Viewer"></iframe>
+        </div>
+
+        <!-- Image viewer -->
+        <div v-else-if="['png','jpg','jpeg'].includes(doc.file_type) && doc.status === 'ready'" class="image-viewer">
+          <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading image...</div>
+          <img v-else-if="fileBlobUrl" :src="fileBlobUrl" :alt="doc.title" class="preview-image" />
+        </div>
+
+        <!-- Markdown viewer -->
+        <div v-else-if="doc.file_type === 'md'" class="md-viewer">
+          <div v-if="doc.status === 'ready' && renderedMd" class="md-content" v-html="renderedMd"></div>
+          <div v-else-if="doc.status === 'ready'" class="empty">No content to display</div>
+        </div>
+
+        <!-- DOCX: show extracted text -->
+        <div v-else-if="doc.file_type === 'docx'" class="text-viewer">
+          <div v-if="doc.status === 'ready' && doc.content_text" class="text-content">{{ doc.content_text }}</div>
+          <div v-else-if="doc.status === 'ready'" class="empty">No text content extracted</div>
+        </div>
+
+        <!-- Fallback -->
+        <div v-else class="text-viewer">
+          <div v-if="doc.content_text" class="text-content">{{ doc.content_text }}</div>
+          <div v-else class="empty">No preview available for this file type</div>
+        </div>
       </div>
 
-      <!-- PDF viewer -->
-      <div v-if="doc.file_type === 'pdf' && doc.status === 'ready'" class="pdf-viewer">
-        <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading PDF...</div>
-        <iframe v-else-if="fileBlobUrl" :src="fileBlobUrl" class="pdf-frame" title="PDF Viewer"></iframe>
-      </div>
+      <!-- Metadata sidebar -->
+      <aside class="reader-sidebar">
+        <div class="card sidebar-section">
+          <h3 class="sidebar-title">Document Info</h3>
+          <dl class="meta-list">
+            <dt>File Type</dt>
+            <dd>{{ doc.file_type.toUpperCase() }}</dd>
+            <dt>Size</dt>
+            <dd>{{ formatSize(doc.file_size) }}</dd>
+            <dt>Status</dt>
+            <dd><span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span></dd>
+            <dt>Created</dt>
+            <dd>{{ formatDate(doc.created_at) }}</dd>
+            <dt>Updated</dt>
+            <dd>{{ formatDate(doc.updated_at) }}</dd>
+            <dt>Original File</dt>
+            <dd class="meta-filename">{{ doc.original_filename }}</dd>
+          </dl>
+        </div>
+      </aside>
+    </div>
 
-      <!-- Image viewer -->
-      <div v-else-if="['png','jpg','jpeg'].includes(doc.file_type) && doc.status === 'ready'" class="image-viewer">
-        <div v-if="fileLoading" class="empty"><span class="spinner"></span> Loading image...</div>
-        <img v-else-if="fileBlobUrl" :src="fileBlobUrl" :alt="doc.title" class="preview-image" />
-      </div>
-
-      <!-- Markdown viewer -->
-      <div v-else-if="doc.file_type === 'md'" class="md-viewer">
-        <div v-if="doc.status === 'ready' && renderedMd" class="md-content" v-html="renderedMd"></div>
-        <div v-else-if="doc.status === 'ready'" class="empty">No content to display</div>
-      </div>
-
-      <!-- DOCX: show extracted text -->
-      <div v-else-if="doc.file_type === 'docx'" class="text-viewer">
-        <div v-if="doc.status === 'ready' && doc.content_text" class="text-content">{{ doc.content_text }}</div>
-        <div v-else-if="doc.status === 'ready'" class="empty">No text content extracted</div>
-      </div>
-
-      <!-- Fallback: show content_text if available -->
-      <div v-else class="text-viewer">
-        <div v-if="doc.content_text" class="text-content">{{ doc.content_text }}</div>
-        <div v-else class="empty">No preview available for this file type</div>
-      </div>
+    <!-- Prev/Next navigation -->
+    <div v-if="doc" class="doc-nav">
+      <button class="btn btn-sm" :disabled="!prevId" @click="goToDoc(prevId)">
+        &larr; Previous
+      </button>
+      <button class="btn btn-sm" :disabled="!nextId" @click="goToDoc(nextId)">
+        Next &rarr;
+      </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
-import { useRoute } from 'vue-router'
-import { getDocument, retryDocument, fetchFileBlobUrl } from '../api'
+import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { getDocument, getDocuments, retryDocument, fetchFileBlobUrl } from '../api'
+import { formatDate, formatSize, statusLabel } from '../utils/format'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
 
 const route = useRoute()
-const docId = route.params.id
+const router = useRouter()
 
 const doc = ref(null)
 const loading = ref(true)
@@ -91,8 +132,9 @@ const error = ref('')
 const retrying = ref(false)
 const fileBlobUrl = ref('')
 const fileLoading = ref(false)
-
 const renderedMd = ref('')
+const prevId = ref(null)
+const nextId = ref(null)
 
 function updateRenderedMd() {
   if (doc.value?.file_type === 'md' && doc.value?.content_text) {
@@ -103,13 +145,21 @@ function updateRenderedMd() {
   }
 }
 
+function revokeBlobUrl() {
+  if (fileBlobUrl.value) {
+    URL.revokeObjectURL(fileBlobUrl.value)
+    fileBlobUrl.value = ''
+  }
+}
+
 async function loadFileBlob() {
   if (!doc.value || doc.value.status !== 'ready') return
   if (!['pdf', 'png', 'jpg', 'jpeg'].includes(doc.value.file_type)) return
 
   fileLoading.value = true
   try {
-    fileBlobUrl.value = await fetchFileBlobUrl(docId, 'original')
+    revokeBlobUrl()
+    fileBlobUrl.value = await fetchFileBlobUrl(route.params.id, 'original')
   } catch {
     // Blob load failed — user can still use "Open Original"
   } finally {
@@ -117,14 +167,30 @@ async function loadFileBlob() {
   }
 }
 
+async function fetchAdjacentIds() {
+  try {
+    const res = await getDocuments({ page: 1, limit: 100, sort_by: 'created_at', sort_order: 'desc' })
+    const items = res.data.data.items
+    const currentIdx = items.findIndex(d => d.id === Number(route.params.id))
+    prevId.value = currentIdx > 0 ? items[currentIdx - 1].id : null
+    nextId.value = currentIdx >= 0 && currentIdx < items.length - 1 ? items[currentIdx + 1].id : null
+  } catch {
+    prevId.value = null
+    nextId.value = null
+  }
+}
+
 async function fetchDoc() {
   loading.value = true
   error.value = ''
+  doc.value = null
+  revokeBlobUrl()
   try {
-    const res = await getDocument(docId)
+    const res = await getDocument(route.params.id)
     doc.value = res.data.data
     updateRenderedMd()
     await loadFileBlob()
+    fetchAdjacentIds()
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to load document'
   } finally {
@@ -136,7 +202,7 @@ async function openOriginal() {
   if (!doc.value) return
   fileLoading.value = true
   try {
-    const url = await fetchFileBlobUrl(docId, 'original')
+    const url = await fetchFileBlobUrl(route.params.id, 'original')
     window.open(url, '_blank')
   } catch {
     error.value = 'Failed to load file'
@@ -148,7 +214,7 @@ async function openOriginal() {
 async function handleRetry() {
   retrying.value = true
   try {
-    const res = await retryDocument(docId)
+    const res = await retryDocument(route.params.id)
     doc.value = res.data.data
     updateRenderedMd()
     if (doc.value.status === 'ready') {
@@ -161,20 +227,17 @@ async function handleRetry() {
   }
 }
 
-function formatDate(d) {
-  if (!d) return ''
-  return new Date(d).toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' })
+function goToDoc(id) {
+  if (id) router.push(`/documents/${id}`)
 }
 
-function formatSize(bytes) {
-  if (bytes < 1024) return bytes + ' B'
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
-  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
-}
+watch(() => route.params.id, (newId, oldId) => {
+  if (newId && newId !== oldId) fetchDoc()
+})
 
-function statusLabel(s) {
-  return { queued: 'Queued', processing: 'Processing', ready: 'Ready', error: 'Error' }[s] || s
-}
+onBeforeUnmount(() => {
+  revokeBlobUrl()
+})
 
 onMounted(fetchDoc)
 </script>
@@ -186,8 +249,28 @@ onMounted(fetchDoc)
 .doc-meta { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--text-secondary); margin-top: 0.25rem; }
 .doc-type { font-family: var(--font-mono); font-size: 0.75rem; }
 
+.header-actions { display: flex; gap: 0.5rem; }
+
+/* Two-column layout */
+.reader-layout {
+  display: grid;
+  grid-template-columns: 1fr 260px;
+  gap: 1rem;
+  align-items: start;
+}
+
 .reader-content { padding: 1.5rem; min-height: 400px; }
 
+/* Sidebar */
+.reader-sidebar { position: sticky; top: 1rem; }
+.sidebar-section { padding: 1rem; }
+.sidebar-title { font-size: 0.875rem; font-weight: 600; margin-bottom: 0.75rem; }
+.meta-list { display: grid; grid-template-columns: auto 1fr; gap: 0.25rem 0.75rem; font-size: 0.8125rem; }
+.meta-list dt { color: var(--text-secondary); font-weight: 500; }
+.meta-list dd { color: var(--text); word-break: break-all; }
+.meta-filename { font-family: var(--font-mono); font-size: 0.75rem; }
+
+/* Status messages */
 .reader-status {
   display: flex;
   align-items: center;
@@ -201,12 +284,15 @@ onMounted(fetchDoc)
 }
 .reader-status-error { background: var(--status-error-bg); color: var(--status-error-text); }
 
+/* PDF viewer */
 .pdf-viewer { width: 100%; }
 .pdf-frame { width: 100%; height: 80vh; border: 1px solid var(--border); border-radius: var(--radius); }
 
+/* Image viewer */
 .image-viewer { text-align: center; }
 .preview-image { max-width: 100%; max-height: 80vh; border-radius: var(--radius); }
 
+/* Markdown viewer */
 .md-content { line-height: 1.8; font-size: 0.9375rem; }
 .md-content :deep(h1) { font-size: 1.5rem; margin: 1.5rem 0 0.75rem; }
 .md-content :deep(h2) { font-size: 1.25rem; margin: 1.25rem 0 0.625rem; }
@@ -222,6 +308,7 @@ onMounted(fetchDoc)
 .md-content :deep(th) { background: var(--bg); }
 .md-content :deep(img) { max-width: 100%; border-radius: var(--radius); }
 
+/* Text viewer */
 .text-content {
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -230,7 +317,18 @@ onMounted(fetchDoc)
   color: var(--text);
 }
 
-@media (max-width: 640px) {
+/* Prev/Next navigation */
+.doc-nav {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+  .reader-layout { grid-template-columns: 1fr; }
+  .reader-sidebar { position: static; }
   .reader-content { padding: 1rem; }
   .pdf-frame { height: 60vh; }
 }
