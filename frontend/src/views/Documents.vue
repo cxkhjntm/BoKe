@@ -187,7 +187,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, watch, computed } from 'vue'
+import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
@@ -222,12 +222,31 @@ const searchError = ref('')
 const authToken = computed(() => localStorage.getItem('access_token') || '')
 const hasActiveFilters = computed(() => filters.status || filters.file_type)
 
+// Status polling
+let pollTimer = null
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(() => fetchDocs(true), 3000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
+function shouldPoll() {
+  return documents.value.some(d => d.status === 'queued' || d.status === 'processing')
+}
+
 function thumbUrl(docId) {
   return `/api/v1/files/${docId}/thumbnail?token=${encodeURIComponent(authToken.value)}`
 }
 
-async function fetchDocs() {
-  loading.value = true
+async function fetchDocs(silent = false) {
+  if (!silent) loading.value = true
   listError.value = ''
   try {
     const res = await getDocuments({
@@ -240,10 +259,16 @@ async function fetchDocs() {
     })
     documents.value = res.data.data.items
     total.value = res.data.data.total
+
+    if (shouldPoll()) {
+      startPolling()
+    } else {
+      stopPolling()
+    }
   } catch (e) {
     listError.value = e.response?.data?.message || 'Failed to load documents'
   } finally {
-    loading.value = false
+    if (!silent) loading.value = false
   }
 }
 
@@ -364,6 +389,10 @@ onMounted(() => {
   } else {
     fetchDocs()
   }
+})
+
+onBeforeUnmount(() => {
+  stopPolling()
 })
 </script>
 

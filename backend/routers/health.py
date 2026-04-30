@@ -28,9 +28,22 @@ def health_check(db: Session = Depends(get_db)):
     except Exception:
         storage_status = "error"
 
+    # Check Redis (informational — doesn't affect overall health)
+    redis_status = "not_configured"
+    try:
+        from backend.config import REDIS_URL
+        import redis
+
+        r = redis.from_url(REDIS_URL, socket_connect_timeout=2)
+        r.ping()
+        redis_status = "ok"
+        r.close()
+    except Exception:
+        redis_status = "unavailable"
+
     overall = "healthy" if db_status == "ok" and storage_status == "ok" else "unhealthy"
 
-    data = {"status": overall, "db": db_status, "storage": storage_status}
+    data = {"status": overall, "db": db_status, "storage": storage_status, "redis": redis_status}
     if overall == "healthy":
         return ok(data=data)
     return JSONResponse(

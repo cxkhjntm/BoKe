@@ -136,6 +136,35 @@ const renderedMd = ref('')
 const prevId = ref(null)
 const nextId = ref(null)
 
+// Status polling
+let pollTimer = null
+
+function startPolling() {
+  stopPolling()
+  pollTimer = setInterval(async () => {
+    try {
+      const res = await getDocument(route.params.id)
+      doc.value = res.data.data
+      updateRenderedMd()
+      if (doc.value.status === 'ready' || doc.value.status === 'error') {
+        stopPolling()
+        if (doc.value.status === 'ready') {
+          await loadFileBlob()
+        }
+      }
+    } catch {
+      // Silently ignore polling errors
+    }
+  }, 3000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
+
 function updateRenderedMd() {
   if (doc.value?.file_type === 'md' && doc.value?.content_text) {
     const raw = marked(doc.value.content_text, { breaks: true })
@@ -189,7 +218,16 @@ async function fetchDoc() {
     const res = await getDocument(route.params.id)
     doc.value = res.data.data
     updateRenderedMd()
-    await loadFileBlob()
+
+    if (doc.value.status === 'queued' || doc.value.status === 'processing') {
+      startPolling()
+    } else {
+      stopPolling()
+    }
+
+    if (doc.value.status === 'ready') {
+      await loadFileBlob()
+    }
     fetchAdjacentIds()
   } catch (e) {
     error.value = e.response?.data?.message || 'Failed to load document'
@@ -217,9 +255,7 @@ async function handleRetry() {
     const res = await retryDocument(route.params.id)
     doc.value = res.data.data
     updateRenderedMd()
-    if (doc.value.status === 'ready') {
-      await loadFileBlob()
-    }
+    startPolling()
   } catch (e) {
     error.value = e.response?.data?.message || 'Retry failed'
   } finally {
@@ -236,6 +272,7 @@ watch(() => route.params.id, (newId, oldId) => {
 })
 
 onBeforeUnmount(() => {
+  stopPolling()
   revokeBlobUrl()
 })
 

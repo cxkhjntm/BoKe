@@ -27,7 +27,7 @@ class Document(Base):
     file_path = Column(String(500), nullable=False)
     thumbnail_path = Column(String(500), nullable=True)
     content_text = Column(Text, nullable=True)
-    status = Column(String(20), default="processing", index=True)
+    status = Column(String(20), default="queued", index=True)
     error_message = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

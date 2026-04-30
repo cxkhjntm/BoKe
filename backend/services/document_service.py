@@ -19,6 +19,7 @@ def create_document(
     file_type: str,
     file_size: int,
     file_path: str,
+    status: str = "queued",
 ) -> Document:
     doc = Document(
         user_id=user_id,
@@ -27,7 +28,7 @@ def create_document(
         file_type=file_type,
         file_size=file_size,
         file_path=file_path,
-        status="processing",
+        status=status,
     )
     db.add(doc)
     db.commit()
@@ -112,7 +113,7 @@ def retry_document(db: Session, doc_id: int, user_id: int) -> Document:
             message="Only documents with 'error' status can be retried",
             status_code=409,
         )
-    doc.status = "processing"
+    doc.status = "queued"
     doc.error_message = None
     doc.content_text = None
     doc.thumbnail_path = None

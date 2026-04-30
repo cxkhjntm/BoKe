@@ -51,6 +51,9 @@ LOG_LEVEL = _get_env("LOG_LEVEL", "INFO").upper()
 # --- CORS ---
 CORS_ORIGINS = _get_env("CORS_ORIGINS", "http://localhost:5173").split(",")
 
+# --- Celery / Redis ---
+REDIS_URL = _get_env("REDIS_URL", "redis://localhost:6379/0")
+
 # --- Rate Limiting ---
 RATE_LIMIT_LOGIN = int(_get_env("RATE_LIMIT_LOGIN", "5"))
 

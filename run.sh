@@ -13,6 +13,17 @@ info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
 warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
 error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
+# Cleanup Celery worker on exit
+CELERY_PID=""
+cleanup() {
+    if [ -n "$CELERY_PID" ]; then
+        info "Stopping Celery worker (PID: $CELERY_PID)..."
+        kill "$CELERY_PID" 2>/dev/null || true
+        wait "$CELERY_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
 info "=== BoKe - Personal Research Portal ==="
 
 # --- Python check ---
@@ -146,6 +157,31 @@ mkdir -p data storage
 info "Running database migrations..."
 alembic upgrade head 2>/dev/null || warn "Alembic migrations skipped (not configured)"
 
+# --- Redis / Celery ---
+CELERY_ENABLED=false
+if command -v redis-cli &>/dev/null; then
+    if redis-cli -u "${REDIS_URL:-redis://localhost:6379/0}" ping 2>/dev/null | grep -q PONG; then
+        info "Redis is available at ${REDIS_URL:-redis://localhost:6379/0}"
+        CELERY_ENABLED=true
+    else
+        warn "Redis is not running. Document processing will use synchronous mode."
+        warn "To enable async processing: start Redis server"
+    fi
+else
+    warn "redis-cli not found. Install Redis for async document processing."
+fi
+
+if [ "$CELERY_ENABLED" = "true" ]; then
+    info "Starting Celery worker in background..."
+    venv/bin/celery -A backend.celery_app worker \
+        --loglevel="${LOG_LEVEL:-info}" \
+        --concurrency=1 \
+        --pidfile=data/celery.pid \
+        --logfile=data/celery.log &
+    CELERY_PID=$!
+    info "Celery worker started (PID: $CELERY_PID)"
+fi
+
 # --- Frontend ---
 BUILD_FRONTEND="${BUILD_FRONTEND:-true}"
 if [ "$BUILD_FRONTEND" = "true" ] && [ -d "frontend" ] && [ -f "frontend/package.json" ]; then
@@ -173,7 +209,7 @@ info "API docs: http://${HOST}:${PORT}/docs"
 echo ""
 
 if [ "$RELOAD" = "true" ]; then
-    exec uvicorn backend.main:app --host "$HOST" --port "$PORT" --reload
+    uvicorn backend.main:app --host "$HOST" --port "$PORT" --reload
 else
-    exec uvicorn backend.main:app --host "$HOST" --port "$PORT"
+    uvicorn backend.main:app --host "$HOST" --port "$PORT"
 fi

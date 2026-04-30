@@ -9,6 +9,7 @@
 | 数据库 | SQLite | 3.x (内置) |
 | 迁移 | Alembic | >=1.12,<2.0 |
 | 认证 | PyJWT + pwdlib[bcrypt] | >=2.8,<3.0 + >=0.3,<1.0 |
+| 任务队列 | Celery + Redis | celery[redis]>=5.3,<6.0; redis>=5.0,<6.0 |
 | 文件处理 | python-multipart, Pillow, PyMuPDF, python-docx, python-magic | Pillow>=10.0,<11.0; PyMuPDF>=1.23,<2.0; python-docx>=1.0,<2.0; python-magic>=0.4,<1.0 |
 | 前端 | Vue3 + Vite | 3.x |
 | 反向代理 | Nginx | 1.24+ |
@@ -34,6 +35,8 @@ BoKe/
 │   ├── main.py                  # FastAPI app 入口
 │   ├── config.py                # 配置（环境变量读取）
 │   ├── database.py              # 数据库连接
+│   ├── celery_app.py            # Celery 应用配置
+│   ├── tasks.py                 # Celery 异步任务
 │   ├── models/
 │   │   ├── __init__.py
 │   │   ├── user.py              # 用户模型
@@ -123,6 +126,7 @@ BoKe/
 | CORS_ORIGINS | 允许的跨域来源 | http://localhost:5173 | http://localhost:5173 |
 | RATE_LIMIT_LOGIN | 登录限流(次/分钟/IP) | 5 | 5 |
 | REGISTRATION_ENABLED | 是否开放注册 | false | false |
+| REDIS_URL | Redis 连接地址 (Celery broker + result backend) | redis://localhost:6379/0 | redis://localhost:6379/0 |
 
 ## 4. 数据库 Schema
 
@@ -423,7 +427,7 @@ GET /api/v1/files/{document_id}/thumbnail
 
 ```
 GET /api/v1/health
-  Response: { "code": 0, "message": "ok", "data": { "status": "healthy", "db": "ok", "storage": "ok" } }
+  Response: { "code": 0, "message": "ok", "data": { "status": "healthy", "db": "ok", "storage": "ok", "redis": "ok" } }
 ```
 
 #### 管理接口
@@ -559,12 +563,28 @@ DELETE /api/v1/api-keys/{id}
 - 支持过期时间、活跃状态检查、last_used_at 自动更新
 - API Key 以 SHA256 哈希存储，原始 key 仅创建时返回一次
 
-### 9.4 异步任务队列
-- 当前: 同步处理文档 (processing_service)
-- 结构: processing_service 与路由层完全解耦，未来替换为 Celery task 即可
-- processing_service.process_document() 签名兼容 Celery（替换 db 为 scoped_session）
-- 每个处理步骤（文本提取、缩略图生成）独立隔离，可拆分为子任务
-- 路由层改为 delay() 调用即可切换为异步
+### 9.4 异步任务队列 (Celery + Redis)
+- Celery 应用: `backend/celery_app.py`，Redis 作为 broker 和 result backend
+- Celery 任务: `backend/tasks.py`，`process_document_task(document_id)` 创建独立 DB session
+- 路由层通过 `_dispatch_processing()` 分发任务，Redis 不可用时自动回退同步处理
+- 文档状态流: `queued → processing → ready / error`
+- `worker_concurrency=1`（SQLite 单写者限制）
+- 前端轮询: Documents.vue 和 Reader.vue 在 `queued`/`processing` 状态下每 3 秒刷新
+- run.sh 自动检测 Redis 可用性，可用时启动 Celery worker 后台进程
+- 健康检查: `/api/v1/health` 返回 `redis: "ok" | "unavailable" | "not_configured"`
+
+```
+Upload Request
+  → file_service.save_file()
+  → document_service.create_document(status="queued")
+  → _dispatch_processing()
+       ├─ [Redis available] process_document_task.delay(doc_id)
+       │     └─ Celery Worker: processing_service.process_document(db, doc)
+       │           ├─ extract_service.extract_text()
+       │           ├─ thumbnail_service.generate_thumbnail()
+       │           └─ status → ready / error
+       └─ [Redis unavailable] processing_service.process_document(db, doc) [同步]
+```
 
 ## 10. 开发阶段划分
 

@@ -17,6 +17,22 @@ from backend.exceptions.handlers import AppException
 logger = get_logger("routers.documents")
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
+
+def _dispatch_processing(document_id: int, db: Session, doc) -> None:
+    """Dispatch document processing. Falls back to sync if Redis is unavailable."""
+    try:
+        from backend.tasks import process_document_task
+
+        process_document_task.delay(document_id)
+        logger.info("Document processing dispatched to Celery: id=%d", document_id)
+    except Exception as e:
+        logger.warning(
+            "Celery dispatch failed (falling back to sync): id=%d, error=%s",
+            document_id,
+            e,
+        )
+        processing_service.process_document(db, doc)
+
 # MIME type whitelist (extension -> allowed MIME patterns)
 MIME_WHITELIST = {
     "pdf": ["application/pdf"],
@@ -103,7 +119,7 @@ def upload_document(
     # Save file
     relative_path = file_service.save_file(current_user.id, file.filename, content, "original")
 
-    # Create document record
+    # Create document record with queued status
     doc = document_service.create_document(
         db=db,
         user_id=current_user.id,
@@ -114,8 +130,8 @@ def upload_document(
         file_path=relative_path,
     )
 
-    # Process document synchronously (TODO: replace with Celery task for async)
-    processing_service.process_document(db, doc)
+    # Dispatch async processing (with sync fallback)
+    _dispatch_processing(doc.id, db, doc)
 
     return ok(data=DocumentOut.model_validate(doc).model_dump())
 
@@ -183,5 +199,5 @@ def retry_document(
     db: Session = Depends(get_db),
 ):
     doc = document_service.retry_document(db, doc_id, current_user.id)
-    processing_service.retry_processing(db, doc)
+    _dispatch_processing(doc.id, db, doc)
     return ok(data=DocumentOut.model_validate(doc).model_dump())
