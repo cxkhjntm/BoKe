@@ -12,12 +12,24 @@ logger = get_logger("routers.search")
 router = APIRouter(prefix="/api/v1/documents", tags=["search"])
 
 
-def _escape_fts5(query: str) -> str:
-    """Escape FTS5 special characters to prevent injection."""
-    # Remove FTS5 operators and wrap in quotes for phrase search
-    cleaned = query.replace('"', '""').strip()
+def _sanitize_fts5_query(query: str) -> str:
+    """Sanitize user input for FTS5 MATCH query.
+
+    Strategy: strip control characters, then wrap in double quotes for phrase search.
+    This prevents FTS5 operator injection (AND, OR, NOT, NEAR, *, -, etc.)
+    while still allowing the user to search for literal text.
+
+    FTS5 special chars inside quoted strings are treated as literals,
+    except for double-quotes which must be escaped as "".
+    """
+    # Strip null bytes and control characters (except whitespace)
+    cleaned = "".join(ch for ch in query if ch in ("\t", "\n", "\r") or (ord(ch) >= 32))
+    # Escape double-quotes for FTS5
+    cleaned = cleaned.replace('"', '""')
+    cleaned = cleaned.strip()
     if not cleaned:
         return '""'
+    # Wrap in double quotes for phrase search (treats content as literal text)
     return f'"{cleaned}"'
 
 
@@ -30,17 +42,21 @@ def search_documents(
     db: Session = Depends(get_db),
 ):
     offset = (page - 1) * limit
-    safe_query = _escape_fts5(q)
+    safe_query = _sanitize_fts5_query(q)
 
-    # FTS5 search with snippet
+    # FTS5 search with snippet, count via window function to avoid duplicate MATCH
     sql = text("""
-        SELECT d.id, d.title, d.file_type, d.status, d.created_at,
-               snippet(documents_fts, 1, '...', '...', '...', 64) as snippet
-        FROM documents_fts
-        JOIN documents d ON d.id = documents_fts.rowid
-        WHERE documents_fts MATCH :query
-          AND d.user_id = :user_id
-        ORDER BY rank
+        SELECT id, title, file_type, status, created_at, snippet, total
+        FROM (
+            SELECT d.id, d.title, d.file_type, d.status, d.created_at,
+                   snippet(documents_fts, 1, '...', '...', '...', 64) as snippet,
+                   COUNT(*) OVER() as total
+            FROM documents_fts
+            JOIN documents d ON d.id = documents_fts.rowid
+            WHERE documents_fts MATCH :query
+              AND d.user_id = :user_id
+            ORDER BY rank
+        )
         LIMIT :limit OFFSET :offset
     """)
 
@@ -52,15 +68,7 @@ def search_documents(
     })
     rows = result.fetchall()
 
-    # Count total
-    count_sql = text("""
-        SELECT COUNT(*)
-        FROM documents_fts
-        JOIN documents d ON d.id = documents_fts.rowid
-        WHERE documents_fts MATCH :query
-          AND d.user_id = :user_id
-    """)
-    total = db.execute(count_sql, {"query": safe_query, "user_id": current_user.id}).scalar()
+    total = rows[0][6] if rows else 0
 
     items = []
     for row in rows:

@@ -1,4 +1,3 @@
-import mimetypes
 from pathlib import Path
 
 import magic
@@ -9,9 +8,8 @@ from backend.database import get_db
 from backend.middleware.auth import get_current_user
 from backend.models.user import User
 from backend.schemas.document import DocumentOut, DocumentListItem, DocumentUpdate
-from backend.schemas.common import ApiResponse, PaginatedData
-from backend.services import document_service, file_service, extract_service, thumbnail_service
-from backend.utils.response import ok, fail
+from backend.services import document_service, file_service, processing_service
+from backend.utils.response import ok
 from backend.utils.logger import get_logger
 from backend.config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS
 from backend.exceptions.handlers import AppException
@@ -117,40 +115,9 @@ def upload_document(
     )
 
     # Process document synchronously (TODO: replace with Celery task for async)
-    _process_document(db, doc)
+    processing_service.process_document(db, doc)
 
     return ok(data=DocumentOut.model_validate(doc).model_dump())
-
-
-def _process_document(db, doc) -> None:
-    """Process document: extract text + generate thumbnail."""
-    from backend.config import STORAGE_PATH
-
-    try:
-        abs_path = STORAGE_PATH / doc.file_path
-
-        # Extract text
-        text = extract_service.extract_text(abs_path, doc.file_type)
-        if text:
-            doc.content_text = text
-
-        # Generate thumbnail
-        thumb_name = Path(doc.file_path).stem + "_thumb.jpg"
-        thumb_dir = STORAGE_PATH / str(doc.user_id) / "thumbnails"
-        thumb_path = thumb_dir / thumb_name
-        result = thumbnail_service.generate_thumbnail(abs_path, doc.file_type, thumb_path)
-        if result:
-            doc.thumbnail_path = str(result.relative_to(STORAGE_PATH))
-
-        doc.status = "ready"
-        db.commit()
-        logger.info("Document processed successfully: id=%d", doc.id)
-
-    except Exception as e:
-        doc.status = "error"
-        doc.error_message = str(e)[:500]
-        db.commit()
-        logger.error("Document processing failed: id=%d, error=%s", doc.id, e)
 
 
 @router.get("")
@@ -207,3 +174,14 @@ def delete_document(
 ):
     document_service.delete_document(db, doc_id, current_user.id)
     return ok()
+
+
+@router.post("/{doc_id}/retry")
+def retry_document(
+    doc_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    doc = document_service.retry_document(db, doc_id, current_user.id)
+    processing_service.retry_processing(db, doc)
+    return ok(data=DocumentOut.model_validate(doc).model_dump())

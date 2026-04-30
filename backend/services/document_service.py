@@ -101,3 +101,31 @@ def update_document(db: Session, doc_id: int, user_id: int, title: str | None = 
     db.commit()
     db.refresh(doc)
     return doc
+
+
+def retry_document(db: Session, doc_id: int, user_id: int) -> Document:
+    """Retry processing a failed document."""
+    doc = get_document(db, doc_id, user_id)
+    if doc.status != "error":
+        raise AppException(
+            code=4005,
+            message="Only documents with 'error' status can be retried",
+            status_code=409,
+        )
+    doc.status = "processing"
+    doc.error_message = None
+    db.commit()
+    db.refresh(doc)
+    logger.info("Document retry initiated: id=%d", doc_id)
+    return doc
+
+
+def rebuild_fts_index(db: Session) -> int:
+    """Rebuild FTS5 index. Returns number of documents indexed."""
+    from sqlalchemy import text
+
+    db.execute(text("INSERT INTO documents_fts(documents_fts) VALUES('rebuild')"))
+    db.commit()
+    count = db.execute(text("SELECT COUNT(*) FROM documents")).scalar()
+    logger.info("FTS5 index rebuilt. Total documents: %d", count)
+    return count

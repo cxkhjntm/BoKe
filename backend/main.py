@@ -13,7 +13,7 @@ from backend.exceptions.handlers import AppException, app_exception_handler, glo
 from backend.middleware.rate_limit import RateLimitMiddleware
 from backend.services.auth_service import init_admin
 
-from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health
+from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health, admin
 
 setup_logger()
 logger = get_logger("main")
@@ -142,3 +142,4 @@ app.include_router(files.router)
 app.include_router(chat.router)
 app.include_router(milvus.router)
 app.include_router(api_keys.router)
+app.include_router(admin.router)

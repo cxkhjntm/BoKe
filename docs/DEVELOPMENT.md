@@ -53,14 +53,17 @@ BoKe/
 │   │   ├── files.py             # 文件访问（鉴权后返回文件）
 │   │   ├── chat.py              # LLM 预留
 │   │   ├── milvus.py            # Milvus 预留
-│   │   └── api_keys.py          # API Key 管理
+│   │   ├── api_keys.py          # API Key 管理
+│   │   ├── admin.py             # 管理接口（FTS 重建等）
+│   │   └── health.py            # 健康检查
 │   ├── services/
 │   │   ├── __init__.py
 │   │   ├── auth_service.py      # 认证逻辑
 │   │   ├── document_service.py  # 文档业务逻辑
 │   │   ├── file_service.py      # 文件存储操作
 │   │   ├── extract_service.py   # 文本提取（PDF/DOCX/MD）
-│   │   └── thumbnail_service.py # 缩略图生成
+│   │   ├── thumbnail_service.py # 缩略图生成（全类型）
+│   │   └── processing_service.py # 文档处理管线（文本提取+缩略图编排）
 │   ├── middleware/
 │   │   ├── __init__.py
 │   │   ├── auth.py              # JWT 中间件
@@ -338,6 +341,18 @@ DELETE /api/v1/documents/{id}
   Header: Authorization: Bearer <access_token>
   注: 文档处理中(status=processing)时不允许删除，返回 4005
   Response: { "code": 0, "message": "ok", "data": null }
+
+POST /api/v1/documents/{id}/retry
+  Header: Authorization: Bearer <access_token>
+  注: 仅 status=error 的文档可重试，返回 4009 其他状态
+  Response:
+  {
+    "code": 0, "message": "ok",
+    "data": {
+      "id": 1, "title": "文档标题", "status": "processing",
+      "error_message": null, ...
+    }
+  }
 ```
 
 #### 搜索
@@ -346,7 +361,8 @@ DELETE /api/v1/documents/{id}
 GET /api/v1/documents/search?q=keyword
   Header: Authorization: Bearer <access_token>
   Query: q=keyword&page=1&limit=20
-  注: 搜索关键词需转义 FTS5 特殊字符，使用参数化绑定防注入
+  注: 搜索关键词自动进行 FTS5 安全处理（去除控制字符, 双引号转义, 短语搜索模式）
+      禁止直接传入 FTS5 运算符 (AND/OR/NOT/NEAR/*/-)
   Response:
   {
     "code": 0, "message": "ok",
@@ -375,7 +391,7 @@ GET /api/v1/files/{document_id}/original
 GET /api/v1/files/{document_id}/thumbnail
   Header: Authorization: Bearer <access_token>
   Response: 缩略图文件流 (默认 200x200, JPEG 格式)
-  注: DOCX/Markdown 不生成缩略图，使用默认图标
+  注: PDF/图片生成实际缩略图，DOCX/Markdown 生成带文件类型标签的图标缩略图
 ```
 
 #### 健康检查
@@ -383,6 +399,15 @@ GET /api/v1/files/{document_id}/thumbnail
 ```
 GET /api/v1/health
   Response: { "code": 0, "message": "ok", "data": { "status": "healthy", "db": "ok", "storage": "ok" } }
+```
+
+#### 管理接口
+
+```
+POST /api/v1/admin/fts-rebuild
+  Header: Authorization: Bearer <access_token>
+  注: 仅管理员可用，重建 FTS5 全文索引
+  Response: { "code": 0, "message": "ok", "data": { "rebuild": true, "document_count": 42 } }
 ```
 
 #### 预留接口
@@ -508,9 +533,11 @@ DELETE /api/v1/api-keys/{id}
 - 完整 CRUD 在阶段3
 
 ### 9.4 异步任务队列
-- 当前: 同步处理文档 (extract_service)
-- 结构: 服务层与路由层解耦，未来替换为 Celery task 即可
-- backend/services/ 下的函数签名不变，路由层改为 delay() 调用
+- 当前: 同步处理文档 (processing_service)
+- 结构: processing_service 与路由层完全解耦，未来替换为 Celery task 即可
+- processing_service.process_document() 签名兼容 Celery（替换 db 为 scoped_session）
+- 每个处理步骤（文本提取、缩略图生成）独立隔离，可拆分为子任务
+- 路由层改为 delay() 调用即可切换为异步
 
 ## 10. 开发阶段划分
 
@@ -522,10 +549,13 @@ DELETE /api/v1/api-keys/{id}
 - 文档 CRUD
 
 ### 阶段2: 内容处理 + 搜索
-- PDF/DOCX 文本提取
-- 搜索功能 (FTS5)
-- 图片缩略图
-- status 字段处理
+- PDF/DOCX/Markdown 文本提取 (extract_service)
+- 全类型缩略图生成 (thumbnail_service: PDF/图片实际渲染, DOCX/MD 带标签图标)
+- 文档处理管线模块化 (processing_service: 独立错误隔离, Celery 兼容)
+- FTS5 全文搜索 + 查询安全增强 (短语搜索, 控制字符过滤)
+- 文档重试机制 (POST /documents/{id}/retry)
+- 管理接口 (POST /admin/fts-rebuild)
+- status 字段完整生命周期 (processing -> ready / error)
 
 ### 阶段3: 前端 + 扩展 + 部署
 - Vue3 前端
