@@ -55,8 +55,9 @@
       <div class="filters">
         <select v-model="filters.status" class="input filter-select" @change="onFilterChange">
           <option value="">All Status</option>
-          <option value="ready">Ready</option>
+          <option value="queued">Queued</option>
           <option value="processing">Processing</option>
+          <option value="ready">Ready</option>
           <option value="error">Error</option>
         </select>
         <select v-model="filters.file_type" class="input filter-select" @change="onFilterChange">
@@ -272,7 +273,7 @@ function formatSize(bytes) {
 }
 
 function statusLabel(s) {
-  return { ready: 'Ready', processing: 'Processing', error: 'Error' }[s] || s
+  return { queued: 'Queued', processing: 'Processing', ready: 'Ready', error: 'Error' }[s] || s
 }
 
 // Watch search query — handle both present and absent

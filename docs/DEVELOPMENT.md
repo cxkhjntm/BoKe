@@ -8,7 +8,7 @@
 | ORM | SQLAlchemy | >=2.0,<3.0 |
 | 数据库 | SQLite | 3.x (内置) |
 | 迁移 | Alembic | >=1.12,<2.0 |
-| 认证 | PyJWT + passlib[bcrypt] | >=2.8,<3.0 + >=1.7,<2.0 |
+| 认证 | PyJWT + pwdlib[bcrypt] | >=2.8,<3.0 + >=0.3,<1.0 |
 | 文件处理 | python-multipart, Pillow, PyMuPDF, python-docx, python-magic | Pillow>=10.0,<11.0; PyMuPDF>=1.23,<2.0; python-docx>=1.0,<2.0; python-magic>=0.4,<1.0 |
 | 前端 | Vue3 + Vite | 3.x |
 | 反向代理 | Nginx | 1.24+ |
@@ -155,19 +155,44 @@ CREATE TABLE documents (
     file_path       VARCHAR(500) NOT NULL,        -- 存储路径 (相对于 STORAGE_PATH)
     thumbnail_path  VARCHAR(500),                 -- 缩略图路径
     content_text    TEXT,                          -- 提取的文本内容
-    status          VARCHAR(20) DEFAULT 'processing', -- processing / ready / error
-    error_message   TEXT,                          -- 处理失败时的错误信息
+    status          VARCHAR(20) DEFAULT 'processing', -- queued / processing / ready / error
+    error_message   TEXT,                          -- 处理失败时的错误信息（脱敏）
     created_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP
+    updated_at      DATETIME DEFAULT CURRENT_TIMESTAMP,
+    CHECK (file_type IN ('pdf','docx','md','png','jpg','jpeg')),
+    CHECK (status IN ('queued','processing','ready','error'))
 );
 
 CREATE INDEX idx_documents_user_id ON documents(user_id);
 CREATE INDEX idx_documents_status ON documents(status);
-
--- CHECK 约束（应用层 + 数据库层双重校验）
--- ALTER TABLE documents ADD CONSTRAINT chk_file_type CHECK(file_type IN ('pdf', 'docx', 'md', 'png', 'jpg', 'jpeg'));
--- SQLite 不支持 ADD CONSTRAINT，需在建表时定义或通过 Alembic 迁移实现
 ```
+
+### 4.2.1 文档状态机
+
+```
+         [Upload/Create]
+              │
+              ▼
+           queued ──────→ (Stage C: 异步模式)
+              │
+              ▼
+          processing ──→ (当前: 同步模式，立即执行)
+           /      \
+          ▼        ▼
+       ready     error
+                  │
+                  ▼ (retry)
+              processing
+```
+
+| 状态 | 含义 | 前端展示 | 可删除 | 可重试 |
+|------|------|---------|--------|--------|
+| `queued` | 已入队，等待处理 | 蓝色标签 "Queued" | 否 | 否 |
+| `processing` | 正在处理中 | 黄色标签 "Processing" | 否 | 否 |
+| `ready` | 处理完成 | 绿色标签 "Ready" | 是 | 否 |
+| `error` | 处理失败 | 红色标签 "Error" + 错误信息 | 是 | 是 |
+
+数据库层通过 CHECK 约束强制状态合法性：`CHECK (status IN ('queued','processing','ready','error'))`
 
 ### 4.3 documents_fts 表 (FTS5 虚拟表)
 
@@ -304,7 +329,7 @@ GET /api/v1/documents
   Query: page=1&limit=20&sort_by=created_at&sort_order=desc&status=ready&file_type=pdf
     - sort_by: created_at | file_size | title (默认 created_at)
     - sort_order: asc | desc (默认 desc)
-    - status: processing | ready | error (可选筛选)
+    - status: queued | processing | ready | error (可选筛选)
     - file_type: pdf | docx | md | png | jpg | jpeg (可选筛选)
     - limit: 最大 100
   Response:
@@ -339,7 +364,7 @@ GET /api/v1/documents/{id}
 
 DELETE /api/v1/documents/{id}
   Header: Authorization: Bearer <access_token>
-  注: 文档处理中(status=processing)时不允许删除，返回 4005
+  注: 文档处理中(status=queued/processing)时不允许删除，返回 4005
   Response: { "code": 0, "message": "ok", "data": null }
 
 POST /api/v1/documents/{id}/retry
@@ -557,7 +582,7 @@ DELETE /api/v1/api-keys/{id}
 - FTS5 全文搜索 + 查询安全增强 (短语搜索, 控制字符过滤)
 - 文档重试机制 (POST /documents/{id}/retry)
 - 管理接口 (POST /admin/fts-rebuild)
-- status 字段完整生命周期 (processing -> ready / error)
+- status 字段完整生命周期 (queued -> processing -> ready / error)
 
 ### 阶段3: 前端 + 扩展 + 部署
 - Vue3 + Vite 前端 (Pinia 状态管理, Vue Router, axios 封装)

@@ -126,7 +126,7 @@ def list_documents(
     limit: int = Query(20, ge=1, le=100),
     sort_by: str = Query("created_at", pattern="^(created_at|file_size|title)$"),
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
-    status: str | None = Query(None, pattern="^(processing|ready|error)$"),
+    status: str | None = Query(None, pattern="^(queued|processing|ready|error)$"),
     file_type: str | None = Query(None, pattern="^(pdf|docx|md|png|jpg|jpeg)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

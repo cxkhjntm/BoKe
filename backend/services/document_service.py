@@ -79,7 +79,7 @@ def delete_document(db: Session, doc_id: int, user_id: int) -> None:
     if not doc:
         raise AppException(code=4004, message="Document not found", status_code=404)
 
-    if doc.status == "processing":
+    if doc.status in ("queued", "processing"):
         raise AppException(code=4005, message="Cannot delete document while processing", status_code=409)
 
     # Delete physical files
