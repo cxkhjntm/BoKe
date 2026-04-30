@@ -99,12 +99,19 @@
           <option value="png">PNG</option>
           <option value="jpg">JPG</option>
         </select>
+        <label class="filter-fav-toggle">
+          <input type="checkbox" v-model="filters.favoritesOnly" @change="onFilterChange" />
+          <span class="fav-toggle-label">&#9733; Favorites</span>
+        </label>
         <div v-if="hasActiveFilters" class="filter-tags">
           <span v-if="filters.status" class="filter-tag" @click="clearFilter('status')">
             {{ statusLabel(filters.status) }} &times;
           </span>
           <span v-if="filters.file_type" class="filter-tag" @click="clearFilter('file_type')">
             {{ filters.file_type.toUpperCase() }} &times;
+          </span>
+          <span v-if="filters.favoritesOnly" class="filter-tag" @click="clearFilter('favoritesOnly')">
+            &#9733; Favorites &times;
           </span>
         </div>
       </div>
@@ -158,6 +165,14 @@
           </div>
           <div class="doc-card-actions">
             <button
+              class="btn-icon fav-btn"
+              :class="{ 'fav-active': doc.is_favorite }"
+              @click.stop="handleToggleFavorite(doc)"
+              :title="doc.is_favorite ? 'Remove from favorites' : 'Add to favorites'"
+            >
+              {{ doc.is_favorite ? '&#9733;' : '&#9734;' }}
+            </button>
+            <button
               v-if="doc.status === 'error'"
               class="btn btn-sm"
               @click.stop="handleRetry(doc.id)"
@@ -189,7 +204,7 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments } from '../api'
+import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments, toggleFavorite } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
 
 const route = useRoute()
@@ -201,7 +216,7 @@ const listError = ref('')
 const page = ref(1)
 const limit = 20
 const total = ref(0)
-const filters = reactive({ status: '', file_type: '' })
+const filters = reactive({ status: '', file_type: '', favoritesOnly: false })
 const dragging = ref(false)
 let dragCounter = 0
 
@@ -220,7 +235,7 @@ const searchLoading = ref(false)
 const searchError = ref('')
 
 const authToken = computed(() => localStorage.getItem('access_token') || '')
-const hasActiveFilters = computed(() => filters.status || filters.file_type)
+const hasActiveFilters = computed(() => filters.status || filters.file_type || filters.favoritesOnly)
 
 // Status polling
 let pollTimer = null
@@ -256,6 +271,7 @@ async function fetchDocs(silent = false) {
       sort_order: 'desc',
       ...(filters.status && { status: filters.status }),
       ...(filters.file_type && { file_type: filters.file_type }),
+      ...(filters.favoritesOnly && { is_favorite: true }),
     })
     documents.value = res.data.data.items
     total.value = res.data.data.total
@@ -293,8 +309,18 @@ function onFilterChange() {
 }
 
 function clearFilter(key) {
-  filters[key] = ''
+  filters[key] = key === 'favoritesOnly' ? false : ''
   onFilterChange()
+}
+
+async function handleToggleFavorite(doc) {
+  const prev = doc.is_favorite
+  doc.is_favorite = !prev // Optimistic update
+  try {
+    await toggleFavorite(doc.id)
+  } catch {
+    doc.is_favorite = prev // Revert on error
+  }
 }
 
 function onDragEnter() {
@@ -461,6 +487,30 @@ onBeforeUnmount(() => {
   padding: 0 0.75rem;
   border-left: 1px solid var(--border);
 }
+
+.fav-btn {
+  background: none;
+  border: none;
+  font-size: 1.25rem;
+  cursor: pointer;
+  color: var(--text-secondary);
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color var(--transition-fast), transform var(--transition-fast);
+}
+.fav-btn:hover { transform: scale(1.2); }
+.fav-active { color: #f59e0b; }
+
+.filter-fav-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  cursor: pointer;
+  user-select: none;
+}
+.filter-fav-toggle input { accent-color: var(--primary); }
+.fav-toggle-label { color: var(--text-secondary); }
 
 /* Drag-drop zone */
 .drop-zone {

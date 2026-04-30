@@ -139,3 +139,79 @@ class TestRetryDocument:
         response = client.post(f"/api/v1/documents/{doc_id}/retry", headers=auth_headers)
         assert response.status_code == 200
         assert response.json()["data"]["status"] == "queued"
+
+
+class TestToggleFavorite:
+    def test_toggle_favorite_on(self, client, auth_headers, sample_pdf):
+        content = sample_pdf.read_bytes()
+        upload_resp = client.post(
+            "/api/v1/documents",
+            headers=auth_headers,
+            files={"file": ("test.pdf", content, "application/pdf")},
+        )
+        doc_id = upload_resp.json()["data"]["id"]
+
+        response = client.patch(f"/api/v1/documents/{doc_id}/favorite", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["is_favorite"] is True
+
+    def test_toggle_favorite_off(self, client, auth_headers, sample_pdf):
+        content = sample_pdf.read_bytes()
+        upload_resp = client.post(
+            "/api/v1/documents",
+            headers=auth_headers,
+            files={"file": ("test.pdf", content, "application/pdf")},
+        )
+        doc_id = upload_resp.json()["data"]["id"]
+
+        # Toggle on then off
+        client.patch(f"/api/v1/documents/{doc_id}/favorite", headers=auth_headers)
+        response = client.patch(f"/api/v1/documents/{doc_id}/favorite", headers=auth_headers)
+        assert response.status_code == 200
+        assert response.json()["data"]["is_favorite"] is False
+
+    def test_toggle_favorite_nonexistent(self, client, auth_headers):
+        response = client.patch("/api/v1/documents/99999/favorite", headers=auth_headers)
+        assert response.status_code == 404
+
+
+class TestListWithFavoriteFilter:
+    def test_list_favorites_only(self, client, auth_headers, sample_pdf):
+        content = sample_pdf.read_bytes()
+        # Upload two docs
+        resp1 = client.post(
+            "/api/v1/documents",
+            headers=auth_headers,
+            files={"file": ("a.pdf", content, "application/pdf")},
+        )
+        resp2 = client.post(
+            "/api/v1/documents",
+            headers=auth_headers,
+            files={"file": ("b.pdf", content, "application/pdf")},
+        )
+        doc_id = resp1.json()["data"]["id"]
+
+        # Favorite one
+        client.patch(f"/api/v1/documents/{doc_id}/favorite", headers=auth_headers)
+
+        # List with favorites filter
+        response = client.get("/api/v1/documents?is_favorite=true", headers=auth_headers)
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["total"] == 1
+        assert data["items"][0]["id"] == doc_id
+
+    def test_list_includes_is_favorite_field(self, client, auth_headers, sample_pdf):
+        content = sample_pdf.read_bytes()
+        client.post(
+            "/api/v1/documents",
+            headers=auth_headers,
+            files={"file": ("test.pdf", content, "application/pdf")},
+        )
+
+        response = client.get("/api/v1/documents", headers=auth_headers)
+        assert response.status_code == 200
+        item = response.json()["data"]["items"][0]
+        assert "is_favorite" in item
+        assert item["is_favorite"] is False

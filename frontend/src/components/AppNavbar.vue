@@ -6,6 +6,11 @@
         <span :class="{ open: mobileOpen }"></span>
       </button>
       <div class="navbar-actions" :class="{ 'navbar-actions-open': mobileOpen }">
+        <nav class="navbar-links">
+          <router-link to="/" class="nav-link" @click="mobileOpen = false">Dashboard</router-link>
+          <router-link to="/documents" class="nav-link" @click="mobileOpen = false">Documents</router-link>
+          <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">Favorites</router-link>
+        </nav>
         <SearchBar />
         <button class="btn btn-sm" @click="handleLogout">Logout</button>
       </div>
@@ -57,6 +62,25 @@ async function handleLogout() {
   align-items: center;
   gap: 0.75rem;
 }
+.navbar-links {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.nav-link {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.375rem 0.625rem;
+  border-radius: var(--radius);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+.nav-link:hover,
+.nav-link.router-link-exact-active {
+  color: var(--text);
+  background: var(--bg);
+}
 
 /* Mobile hamburger */
 .navbar-toggle {
@@ -104,5 +128,10 @@ async function handleLogout() {
     box-shadow: var(--shadow);
   }
   .navbar-actions-open { display: flex; }
+  .navbar-links {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+  }
 }
 </style>

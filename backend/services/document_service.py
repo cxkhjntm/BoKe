@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 from sqlalchemy.orm import Session
 from sqlalchemy import desc, asc
@@ -53,6 +54,7 @@ def list_documents(
     sort_order: str = "desc",
     status: str | None = None,
     file_type: str | None = None,
+    is_favorite: bool | None = None,
 ) -> dict:
     query = db.query(Document).filter(Document.user_id == user_id)
 
@@ -60,6 +62,8 @@ def list_documents(
         query = query.filter(Document.status == status)
     if file_type:
         query = query.filter(Document.file_type == file_type)
+    if is_favorite is not None:
+        query = query.filter(Document.is_favorite == is_favorite)
 
     total = query.count()
 
@@ -121,6 +125,27 @@ def retry_document(db: Session, doc_id: int, user_id: int) -> Document:
     db.refresh(doc)
     logger.info("Document retry initiated: id=%d", doc_id)
     return doc
+
+
+def toggle_favorite(db: Session, doc_id: int, user_id: int) -> Document:
+    """Toggle favorite status of a document."""
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == user_id).first()
+    if not doc:
+        raise AppException(code=4004, message="Document not found", status_code=404)
+    doc.is_favorite = not doc.is_favorite
+    db.commit()
+    db.refresh(doc)
+    logger.info("Document favorite toggled: id=%d, is_favorite=%s", doc_id, doc.is_favorite)
+    return doc
+
+
+def record_view(db: Session, doc_id: int, user_id: int) -> None:
+    """Increment view count and update last_viewed_at."""
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == user_id).first()
+    if doc:
+        doc.view_count = (doc.view_count or 0) + 1
+        doc.last_viewed_at = datetime.utcnow()
+        db.commit()
 
 
 def rebuild_fts_index(db: Session) -> int:

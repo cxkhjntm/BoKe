@@ -8,7 +8,7 @@ from backend.database import get_db
 from backend.middleware.auth import get_current_user
 from backend.models.user import User
 from backend.schemas.document import DocumentOut, DocumentListItem, DocumentUpdate
-from backend.services import document_service, file_service, processing_service
+from backend.services import document_service, file_service, processing_service, dashboard_service
 from backend.utils.response import ok
 from backend.utils.logger import get_logger
 from backend.config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS
@@ -133,6 +133,9 @@ def upload_document(
     # Dispatch async processing (with sync fallback)
     _dispatch_processing(doc.id, db, doc)
 
+    # Log activity
+    dashboard_service.log_activity(db, current_user.id, "upload", doc.id)
+
     return ok(data=DocumentOut.model_validate(doc).model_dump())
 
 
@@ -144,6 +147,7 @@ def list_documents(
     sort_order: str = Query("desc", pattern="^(asc|desc)$"),
     status: str | None = Query(None, pattern="^(queued|processing|ready|error)$"),
     file_type: str | None = Query(None, pattern="^(pdf|docx|md|png|jpg|jpeg)$"),
+    is_favorite: bool | None = Query(None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -156,6 +160,7 @@ def list_documents(
         sort_order=sort_order,
         status=status,
         file_type=file_type,
+        is_favorite=is_favorite,
     )
     items = [DocumentListItem.model_validate(d).model_dump() for d in result["items"]]
     return ok(data={"items": items, "total": result["total"], "page": page, "limit": limit})
@@ -168,6 +173,8 @@ def get_document(
     db: Session = Depends(get_db),
 ):
     doc = document_service.get_document(db, doc_id, current_user.id)
+    document_service.record_view(db, doc_id, current_user.id)
+    dashboard_service.log_activity(db, current_user.id, "view", doc_id)
     return ok(data=DocumentOut.model_validate(doc).model_dump())
 
 
@@ -201,3 +208,13 @@ def retry_document(
     doc = document_service.retry_document(db, doc_id, current_user.id)
     _dispatch_processing(doc.id, db, doc)
     return ok(data=DocumentOut.model_validate(doc).model_dump())
+
+
+@router.patch("/{doc_id}/favorite")
+def toggle_favorite(
+    doc_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    doc = document_service.toggle_favorite(db, doc_id, current_user.id)
+    return ok(data={"id": doc.id, "is_favorite": doc.is_favorite})

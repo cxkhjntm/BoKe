@@ -10,8 +10,20 @@ const routes = [
   },
   {
     path: '/',
+    name: 'Dashboard',
+    component: () => import('../views/Dashboard.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/documents',
     name: 'Documents',
     component: () => import('../views/Documents.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
+    path: '/favorites',
+    name: 'Favorites',
+    component: () => import('../views/Favorites.vue'),
     meta: { requiresAuth: true },
   },
   {
@@ -37,7 +49,7 @@ router.beforeEach((to) => {
     return { name: 'Login' }
   }
   if (to.meta.guest && authStore.isAuthenticated) {
-    return { name: 'Documents' }
+    return { name: 'Dashboard' }
   }
 })
 

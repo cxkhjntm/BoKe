@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, CheckConstraint
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey, CheckConstraint
 
 from backend.database import Base
 
@@ -29,5 +29,8 @@ class Document(Base):
     content_text = Column(Text, nullable=True)
     status = Column(String(20), default="queued", index=True)
     error_message = Column(Text, nullable=True)
+    is_favorite = Column(Boolean, default=False, index=True)
+    view_count = Column(Integer, default=0)
+    last_viewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

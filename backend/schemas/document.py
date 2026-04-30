@@ -17,6 +17,9 @@ class DocumentOut(BaseModel):
     content_text: str | None = None
     status: DocumentStatus
     error_message: str | None = None
+    is_favorite: bool = False
+    view_count: int = 0
+    last_viewed_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -32,6 +35,8 @@ class DocumentListItem(BaseModel):
     thumbnail_path: str | None = None
     status: DocumentStatus
     error_message: str | None = None
+    is_favorite: bool = False
+    view_count: int = 0
     created_at: datetime
     updated_at: datetime
 

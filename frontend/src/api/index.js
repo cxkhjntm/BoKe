@@ -123,6 +123,9 @@ export const deleteDocument = (id) =>
 export const retryDocument = (id) =>
   api.post(`/documents/${id}/retry`)
 
+export const toggleFavorite = (id) =>
+  api.patch(`/documents/${id}/favorite`)
+
 // --- Search ---
 export const searchDocuments = (params) =>
   api.get('/documents/search', { params })
@@ -147,5 +150,18 @@ export const getMilvusStatus = () =>
 // --- Health ---
 export const getHealth = () =>
   api.get('/health')
+
+// --- Dashboard ---
+export const getDashboardStats = () =>
+  api.get('/dashboard/stats')
+
+export const getDashboardRecent = (params) =>
+  api.get('/dashboard/recent', { params })
+
+export const getDashboardTop = (params) =>
+  api.get('/dashboard/top', { params })
+
+export const getDashboardActivity = (params) =>
+  api.get('/dashboard/activity', { params })
 
 export default api
