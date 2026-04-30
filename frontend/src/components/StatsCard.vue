@@ -40,12 +40,20 @@ function formatBytes(bytes) {
 .stats-card {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  padding: 1rem 1.25rem;
+  gap: 0.875rem;
+  padding: 1.125rem 1.375rem;
+  cursor: default;
 }
 .stats-icon {
   font-size: 1.75rem;
   flex-shrink: 0;
+  width: 3rem;
+  height: 3rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(37, 99, 235, 0.03));
 }
 .stats-value {
   font-size: 1.5rem;
@@ -56,5 +64,6 @@ function formatBytes(bytes) {
 .stats-label {
   font-size: 0.8125rem;
   color: var(--text-secondary);
+  margin-top: 0.125rem;
 }
 </style>

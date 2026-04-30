@@ -143,10 +143,8 @@ onMounted(fetchDocs)
   display: flex;
   align-items: stretch;
   cursor: pointer;
-  transition: box-shadow var(--transition-fast);
   animation: cardIn var(--transition-normal) both;
 }
-.doc-card:hover { box-shadow: var(--shadow-hover); }
 
 .doc-card-visual {
   flex-shrink: 0;
@@ -154,13 +152,22 @@ onMounted(fetchDocs)
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid var(--border);
-  background: var(--bg);
+  border-right: 1px solid rgba(0, 0, 0, 0.06);
+  background: linear-gradient(135deg, rgba(241, 245, 249, 0.6), rgba(226, 232, 240, 0.3));
   border-radius: var(--radius) 0 0 var(--radius);
   overflow: hidden;
   cursor: pointer;
+  position: relative;
 }
-.doc-thumb-img { width: 100%; height: 100%; object-fit: cover; }
+.doc-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--transition-glass);
+}
+.doc-card:hover .doc-thumb-img {
+  transform: scale(1.08);
+}
 
 .file-type-icon {
   font-family: var(--font-mono);

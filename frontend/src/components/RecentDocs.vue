@@ -65,7 +65,7 @@ defineEmits(['navigate'])
   cursor: pointer;
   transition: background var(--transition-fast);
 }
-.doc-row:hover { background: var(--bg); }
+.doc-row:hover { background: rgba(0, 0, 0, 0.04); }
 .doc-icon {
   font-family: var(--font-mono);
   font-size: 0.625rem;
