@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-set -e
+set -eo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$SCRIPT_DIR"
@@ -23,18 +23,75 @@ fi
 
 PYTHON=python3
 PY_VER=$($PYTHON -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
-info "Python version: $PY_VER"
+PY_VER_FULL=$($PYTHON -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')")
+info "Python version: $PY_VER_FULL"
 
 # --- Virtual environment ---
+# Markers used to detect venv corruption or version mismatch.
+_VENV_OK=true
+
+# 1) venv directory missing
 if [ ! -d "venv" ]; then
-    info "Creating virtual environment..."
-    $PYTHON -m venv venv
+    warn "Virtual environment not found."
+    _VENV_OK=false
 fi
-source venv/bin/activate
+
+# 2) activate script missing (partial/corrupt venv)
+if $_VENV_OK && [ ! -f "venv/bin/activate" ]; then
+    warn "venv/bin/activate missing — venv is corrupt."
+    _VENV_OK=false
+fi
+
+# 3) Python version inside venv differs from system Python
+if $_VENV_OK && [ -f "venv/pyvenv.cfg" ]; then
+    _VENV_PY_VER=$(grep "^version" venv/pyvenv.cfg 2>/dev/null | cut -d' ' -f3 | cut -d. -f1,2)
+    if [ -n "$_VENV_PY_VER" ] && [ "$_VENV_PY_VER" != "$PY_VER" ]; then
+        warn "Python version mismatch: venv=$_VENV_PY_VER, system=$PY_VER"
+        _VENV_OK=false
+    fi
+fi
+
+# 4) pip broken inside venv
+if $_VENV_OK && [ -x "venv/bin/pip" ]; then
+    if ! venv/bin/pip --version &>/dev/null; then
+        warn "pip inside venv is broken."
+        _VENV_OK=false
+    fi
+elif $_VENV_OK && [ ! -x "venv/bin/pip" ]; then
+    warn "pip not found inside venv."
+    _VENV_OK=false
+fi
+
+# 5) critical dependency missing (fastapi import fails)
+if $_VENV_OK && [ -x "venv/bin/python" ]; then
+    if ! venv/bin/python -c "import fastapi" &>/dev/null; then
+        warn "Critical dependency 'fastapi' not importable in venv."
+        _VENV_OK=false
+    fi
+fi
+
+# Rebuild if any check failed
+if ! $_VENV_OK; then
+    info "Rebuilding virtual environment..."
+    rm -rf venv
+    $PYTHON -m venv venv
+    info "Virtual environment recreated."
+fi
+
+# Activate — if this fails, the venv is unusable
+if ! source venv/bin/activate 2>/dev/null; then
+    error "Failed to activate virtual environment. Recreating..."
+    rm -rf venv
+    $PYTHON -m venv venv
+    source venv/bin/activate
+fi
 
 # --- Install dependencies ---
 info "Installing Python dependencies..."
-pip install -q -r requirements.txt
+if ! pip install -q -r requirements.txt; then
+    error "Failed to install dependencies. Check requirements.txt and network connectivity."
+    exit 1
+fi
 
 # --- Environment variables ---
 if [ ! -f ".env" ]; then
@@ -50,6 +107,19 @@ if [ ! -f ".env" ]; then
     else
         error ".env file not found and no .env.example"
         exit 1
+    fi
+fi
+
+# Security: warn if .env is world-readable
+if [ "$(uname)" != "Darwin" ] || command -v stat &>/dev/null; then
+    _ENV_PERMS=$(stat -c '%a' .env 2>/dev/null || stat -f '%Lp' .env 2>/dev/null || echo "")
+    if [ -n "$_ENV_PERMS" ]; then
+        # Check if group or other have any permissions (mask 077)
+        _ENV_OTHER=${_ENV_PERMS: -2}
+        if [ "$_ENV_OTHER" != "00" ]; then
+            warn ".env file permissions are $_ENV_PERMS (recommended: 600)"
+            warn "Fix with: chmod 600 .env"
+        fi
     fi
 fi
 

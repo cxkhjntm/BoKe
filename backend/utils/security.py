@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import jwt
-from passlib.context import CryptContext
+from pwdlib import PasswordHash
+from pwdlib.hashers.bcrypt import BcryptHasher
 
 from backend.config import (
     JWT_SECRET_KEY,
@@ -12,15 +13,15 @@ from backend.config import (
     REFRESH_TOKEN_EXPIRE_DAYS,
 )
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_password_hash = PasswordHash(hashers=[BcryptHasher()])
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    return _password_hash.hash(password)
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return pwd_context.verify(plain, hashed)
+    return _password_hash.verify(plain, hashed)
 
 
 def create_access_token(user_id: int) -> tuple[str, str]:
