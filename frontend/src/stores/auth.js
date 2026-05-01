@@ -8,6 +8,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!accessToken.value)
 
+  // Sync reactive state when the API interceptor refreshes tokens
+  if (typeof window !== 'undefined') {
+    window.addEventListener('auth:token-refreshed', (e) => {
+      accessToken.value = e.detail.access_token
+      refreshTokenVal.value = e.detail.refresh_token
+    })
+  }
+
   async function login(username, password) {
     const res = await apiLogin(username, password)
     const data = res.data.data

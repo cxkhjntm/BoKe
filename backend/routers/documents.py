@@ -19,7 +19,12 @@ router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
 
 def _dispatch_processing(document_id: int, db: Session, doc) -> None:
-    """Dispatch document processing. Falls back to sync if Redis is unavailable."""
+    """Dispatch document processing. Falls back to sync if Redis is unavailable.
+
+    When falling back to sync, the document object is modified in-place (status
+    transitions to ready/error). Callers that need the original 'queued' status
+    for the API response should snapshot the doc before calling this.
+    """
     try:
         from backend.tasks import process_document_task
 
@@ -130,13 +135,34 @@ def upload_document(
         file_path=relative_path,
     )
 
+    # Snapshot the document before dispatch. In sync fallback mode, processing
+    # modifies doc in-place (status → ready/error). The client expects 'queued'
+    # in the response and polls for subsequent status changes.
+    doc_snapshot = {
+        "id": doc.id,
+        "title": doc.title,
+        "original_filename": doc.original_filename,
+        "file_type": doc.file_type,
+        "file_size": doc.file_size,
+        "file_path": doc.file_path,
+        "thumbnail_path": doc.thumbnail_path,
+        "content_text": doc.content_text,
+        "status": doc.status,
+        "error_message": doc.error_message,
+        "is_favorite": doc.is_favorite,
+        "view_count": doc.view_count,
+        "last_viewed_at": doc.last_viewed_at,
+        "created_at": doc.created_at,
+        "updated_at": doc.updated_at,
+    }
+
     # Dispatch async processing (with sync fallback)
     _dispatch_processing(doc.id, db, doc)
 
     # Log activity
     dashboard_service.log_activity(db, current_user.id, "upload", doc.id)
 
-    return ok(data=DocumentOut.model_validate(doc).model_dump())
+    return ok(data=doc_snapshot)
 
 
 @router.get("")
@@ -206,8 +232,26 @@ def retry_document(
     db: Session = Depends(get_db),
 ):
     doc = document_service.retry_document(db, doc_id, current_user.id)
+    # Snapshot before dispatch (sync fallback modifies doc in-place)
+    doc_snapshot = {
+        "id": doc.id,
+        "title": doc.title,
+        "original_filename": doc.original_filename,
+        "file_type": doc.file_type,
+        "file_size": doc.file_size,
+        "file_path": doc.file_path,
+        "thumbnail_path": doc.thumbnail_path,
+        "content_text": doc.content_text,
+        "status": doc.status,
+        "error_message": doc.error_message,
+        "is_favorite": doc.is_favorite,
+        "view_count": doc.view_count,
+        "last_viewed_at": doc.last_viewed_at,
+        "created_at": doc.created_at,
+        "updated_at": doc.updated_at,
+    }
     _dispatch_processing(doc.id, db, doc)
-    return ok(data=DocumentOut.model_validate(doc).model_dump())
+    return ok(data=doc_snapshot)
 
 
 @router.patch("/{doc_id}/favorite")

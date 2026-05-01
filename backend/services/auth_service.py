@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import threading
 
 from sqlalchemy.orm import Session
 
@@ -13,6 +14,10 @@ from backend.utils.security import (
 from backend.utils.logger import get_logger
 from backend.exceptions.handlers import AppException
 from backend.config import ADMIN_USERNAME, ADMIN_PASSWORD
+
+# Lock to serialize refresh token rotation within the same process.
+# Prevents concurrent requests from reusing the same refresh token.
+_refresh_lock = threading.Lock()
 
 logger = get_logger("services.auth")
 
@@ -84,7 +89,7 @@ def authenticate(db: Session, username: str, password: str) -> dict:
 
 
 def refresh(db: Session, refresh_token_str: str) -> dict:
-    """Refresh access token. Implements token rotation."""
+    """Refresh access token. Implements token rotation with concurrency-safe locking."""
     try:
         payload = decode_token(refresh_token_str)
     except Exception:
@@ -96,37 +101,41 @@ def refresh(db: Session, refresh_token_str: str) -> dict:
     jti = payload.get("jti")
     user_id = int(payload.get("sub"))
 
-    rt = db.query(RefreshToken).filter(RefreshToken.jti == jti).first()
-    if not rt:
-        # Token family detection: if a revoked token is reused, revoke all user tokens
-        logger.warning("Possible token reuse detected for user %d. Revoking all tokens.", user_id)
-        db.query(RefreshToken).filter(
-            RefreshToken.user_id == user_id,
-            RefreshToken.revoked == False,
-        ).update({"revoked": True})
+    # Serialize refresh token rotation to prevent concurrent requests from
+    # reusing the same refresh token. The lock ensures the read-check-revoke
+    # sequence is atomic within this process.
+    with _refresh_lock:
+        rt = db.query(RefreshToken).filter(RefreshToken.jti == jti).first()
+        if not rt:
+            # Token family detection: if a revoked token is reused, revoke all user tokens
+            logger.warning("Possible token reuse detected for user %d. Revoking all tokens.", user_id)
+            db.query(RefreshToken).filter(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked == False,
+            ).update({"revoked": True})
+            db.commit()
+            raise AppException(code=4001, message="Refresh token has been revoked", status_code=401)
+
+        if rt.revoked:
+            # Token family detection
+            logger.warning("Revoked refresh token reused for user %d. Revoking all tokens.", user_id)
+            db.query(RefreshToken).filter(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked == False,
+            ).update({"revoked": True})
+            db.commit()
+            raise AppException(code=4001, message="Refresh token has been revoked", status_code=401)
+
+        # Revoke old refresh token (rotation)
+        rt.revoked = True
+
+        # Create new tokens
+        new_access, _ = create_access_token(user_id)
+        new_refresh, new_jti, new_expires = create_refresh_token(user_id)
+
+        new_rt = RefreshToken(user_id=user_id, jti=new_jti, expires_at=new_expires)
+        db.add(new_rt)
         db.commit()
-        raise AppException(code=4001, message="Refresh token has been revoked", status_code=401)
-
-    if rt.revoked:
-        # Token family detection
-        logger.warning("Revoked refresh token reused for user %d. Revoking all tokens.", user_id)
-        db.query(RefreshToken).filter(
-            RefreshToken.user_id == user_id,
-            RefreshToken.revoked == False,
-        ).update({"revoked": True})
-        db.commit()
-        raise AppException(code=4001, message="Refresh token has been revoked", status_code=401)
-
-    # Revoke old refresh token (rotation)
-    rt.revoked = True
-
-    # Create new tokens
-    new_access, _ = create_access_token(user_id)
-    new_refresh, new_jti, new_expires = create_refresh_token(user_id)
-
-    new_rt = RefreshToken(user_id=user_id, jti=new_jti, expires_at=new_expires)
-    db.add(new_rt)
-    db.commit()
 
     logger.info("Tokens refreshed for user %d.", user_id)
     return {

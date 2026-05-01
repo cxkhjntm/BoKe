@@ -29,6 +29,8 @@ function doRefresh() {
         const data = res.data.data
         localStorage.setItem('access_token', data.access_token)
         localStorage.setItem('refresh_token', data.refresh_token)
+        // Notify the auth store to sync its reactive state
+        window.dispatchEvent(new CustomEvent('auth:token-refreshed', { detail: data }))
         return data.access_token
       })
       .catch((err) => {

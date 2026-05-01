@@ -29,12 +29,13 @@ def _resolve_user(
     token: Optional[str],
     current_user: Optional[User],
     db: Session,
+    request: Request = None,
 ) -> User:
     """Resolve user from either dependency-injected JWT or query-param token."""
     if current_user:
         return current_user
     if token:
-        return authenticate_from_token(token, db)
+        return authenticate_from_token(token, db, request)
     raise AppException(code=4001, message="Authentication required", status_code=401)
 
 
@@ -46,7 +47,7 @@ async def serve_original(
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user = _resolve_user(token, current_user, db)
+    user = _resolve_user(token, current_user, db, request)
 
     doc = db.query(Document).filter(
         Document.id == doc_id,
@@ -124,11 +125,12 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
 @router.get("/{doc_id}/thumbnail")
 async def serve_thumbnail(
     doc_id: int,
+    request: Request,
     token: Optional[str] = Query(None, description="JWT token for img auth"),
     current_user: Optional[User] = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    user = _resolve_user(token, current_user, db)
+    user = _resolve_user(token, current_user, db, request)
 
     doc = db.query(Document).filter(
         Document.id == doc_id,

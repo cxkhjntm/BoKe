@@ -16,7 +16,9 @@ logger = get_logger("middleware.auth")
 security = HTTPBearer(auto_error=False)
 
 
-def _client_ip(request: Request) -> str:
+def _client_ip(request: Request = None) -> str:
+    if not request:
+        return "unknown"
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
         return forwarded.split(",")[0].strip()
@@ -41,14 +43,14 @@ def get_current_user(
     return _authenticate_jwt(token, db, request)
 
 
-def authenticate_from_token(token: str, db: Session) -> User:
+def authenticate_from_token(token: str, db: Session, request: Request = None) -> User:
     """Authenticate from a raw token string (used for query-param auth in file endpoints)."""
     if token.startswith("sk-"):
-        return _authenticate_api_key(token, db)
-    return _authenticate_jwt(token, db)
+        return _authenticate_api_key(token, db, request)
+    return _authenticate_jwt(token, db, request)
 
 
-def _authenticate_jwt(token: str, db: Session, request: Request) -> User:
+def _authenticate_jwt(token: str, db: Session, request: Request = None) -> User:
     """Authenticate via JWT Bearer token."""
     try:
         payload = decode_token(token)
@@ -91,7 +93,7 @@ def _authenticate_jwt(token: str, db: Session, request: Request) -> User:
     return user
 
 
-def _authenticate_api_key(key: str, db: Session, request: Request) -> User:
+def _authenticate_api_key(key: str, db: Session, request: Request = None) -> User:
     """Authenticate via API Key (sk-xxx)."""
     key_hash = sha256_hash(key)
 
