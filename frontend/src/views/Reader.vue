@@ -118,7 +118,7 @@
 <script setup>
 import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocument, getDocuments, retryDocument, fetchFileBlobUrl } from '../api'
+import { getDocument, getDocuments, retryDocument, fetchFileBlobUrl, revokeBlobUrlFromCache } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -177,6 +177,8 @@ function updateRenderedMd() {
 function revokeBlobUrl() {
   if (fileBlobUrl.value) {
     URL.revokeObjectURL(fileBlobUrl.value)
+    // Also remove from the global blob cache to prevent returning a revoked URL
+    revokeBlobUrlFromCache(route.params.id, 'original')
     fileBlobUrl.value = ''
   }
 }

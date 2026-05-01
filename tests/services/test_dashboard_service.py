@@ -128,8 +128,32 @@ class TestGetActivity:
         result = dashboard_service.get_activity(db_session, user.id)
 
         assert len(result) == 3
-        assert result[0].action == "search"  # most recent first
-        assert result[2].action == "upload"
+        # get_activity returns (ActivityLog, title) tuples
+        assert result[0][0].action == "search"  # most recent first
+        assert result[2][0].action == "upload"
+
+    def test_returns_document_title(self, db_session):
+        user = _make_user(db_session)
+        doc = _make_doc(db_session, user.id, title="My Doc")
+        dashboard_service.log_activity(db_session, user.id, "view", doc.id)
+
+        result = dashboard_service.get_activity(db_session, user.id)
+
+        assert len(result) == 1
+        entry, title = result[0]
+        assert entry.action == "view"
+        assert title == "My Doc"
+
+    def test_title_is_none_for_deleted_document(self, db_session):
+        user = _make_user(db_session)
+        dashboard_service.log_activity(db_session, user.id, "search")
+
+        result = dashboard_service.get_activity(db_session, user.id)
+
+        assert len(result) == 1
+        entry, title = result[0]
+        assert entry.action == "search"
+        assert title is None
 
     def test_respects_limit(self, db_session):
         user = _make_user(db_session)

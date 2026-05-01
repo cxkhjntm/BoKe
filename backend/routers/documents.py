@@ -36,7 +36,14 @@ def _dispatch_processing(document_id: int, db: Session, doc) -> None:
             document_id,
             e,
         )
-        processing_service.process_document(db, doc)
+        try:
+            processing_service.process_document(db, doc)
+        except Exception as sync_err:
+            logger.exception("Sync fallback also failed: id=%d, error=%s", document_id, sync_err)
+            # Mark as error so the document is not stuck in 'queued' forever
+            doc.status = "error"
+            doc.error_message = f"Processing failed: {sync_err}"
+            db.commit()
 
 # MIME type whitelist (extension -> allowed MIME patterns)
 MIME_WHITELIST = {

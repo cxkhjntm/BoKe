@@ -27,5 +27,14 @@ celery.conf.update(
     task_default_queue="default",
 )
 
+# Periodic tasks (Celery beat)
+celery.conf.beat_schedule = {
+    "cleanup-stuck-documents": {
+        "task": "cleanup_stuck_documents",
+        # Run every 5 minutes
+        "schedule": 300.0,
+    },
+}
+
 # Force-import tasks so the worker registers them at startup
 import backend.tasks  # noqa: F401, E402

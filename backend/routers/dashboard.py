@@ -1,5 +1,7 @@
 """Dashboard API endpoints."""
 
+import json
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
@@ -56,9 +58,10 @@ def activity(
             "id": e.id,
             "action": e.action,
             "document_id": e.document_id,
-            "metadata": e.metadata_json,
+            "document_title": title,
+            "metadata": json.loads(e.metadata_json) if e.metadata_json else None,
             "created_at": e.created_at.isoformat() if e.created_at else None,
         }
-        for e in entries
+        for e, title in entries
     ]
     return ok(data=items)

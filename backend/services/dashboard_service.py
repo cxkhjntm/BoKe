@@ -69,9 +69,10 @@ def get_top_viewed(db: Session, user_id: int, limit: int = 10) -> list:
 
 
 def get_activity(db: Session, user_id: int, limit: int = 20) -> list:
-    """Return recent activity log entries."""
+    """Return recent activity log entries with document titles."""
     return (
-        db.query(ActivityLog)
+        db.query(ActivityLog, Document.title)
+        .outerjoin(Document, ActivityLog.document_id == Document.id)
         .filter(ActivityLog.user_id == user_id)
         .order_by(desc(ActivityLog.created_at))
         .limit(limit)

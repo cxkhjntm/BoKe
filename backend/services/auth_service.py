@@ -57,6 +57,11 @@ def authenticate(db: Session, username: str, password: str) -> dict:
             status_code=423,
         )
 
+    # Reset failure count if lockout has expired (prevents re-lock on first post-lockout failure)
+    if user.locked_until and user.locked_until <= datetime.utcnow():
+        user.login_failures = 0
+        user.locked_until = None
+
     if not verify_password(password, user.password_hash):
         # Increment failure count
         user.login_failures = (user.login_failures or 0) + 1

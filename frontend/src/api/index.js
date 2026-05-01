@@ -75,6 +75,15 @@ export function revokeAllBlobUrls() {
   blobCache.clear()
 }
 
+export function revokeBlobUrlFromCache(docId, type = 'original') {
+  const cacheKey = `${docId}:${type}`
+  const url = blobCache.get(cacheKey)
+  if (url) {
+    URL.revokeObjectURL(url)
+    blobCache.delete(cacheKey)
+  }
+}
+
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', revokeAllBlobUrls)
 }
