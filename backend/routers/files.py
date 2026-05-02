@@ -1,6 +1,7 @@
 import mimetypes
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request
 from fastapi.responses import StreamingResponse
@@ -18,6 +19,13 @@ logger = get_logger("routers.files")
 router = APIRouter(prefix="/api/v1/files", tags=["files"])
 
 CHUNK_SIZE = 8192
+
+
+def _content_disposition(filename: str) -> str:
+    """Build Content-Disposition header with RFC 5987 encoding for non-ASCII filenames."""
+    safe = filename.encode('ascii', 'ignore').decode()
+    encoded = quote(filename)
+    return f'inline; filename="{safe}"; filename*=UTF-8\'\'{encoded}'
 
 
 def _get_mime(file_path: Path) -> str:
@@ -77,7 +85,7 @@ async def serve_original(
         file_iter(),
         media_type=mime_type,
         headers={
-            "Content-Disposition": f'inline; filename="{doc.original_filename}"',
+            "Content-Disposition": _content_disposition(doc.original_filename),
             "Accept-Ranges": "bytes",
             "Content-Length": str(file_size),
         },
@@ -114,7 +122,7 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
         status_code=206,
         media_type=mime_type,
         headers={
-            "Content-Disposition": f'inline; filename="{filename}"',
+            "Content-Disposition": _content_disposition(filename),
             "Accept-Ranges": "bytes",
             "Content-Range": f"bytes {start}-{end}/{file_size}",
             "Content-Length": str(content_length),

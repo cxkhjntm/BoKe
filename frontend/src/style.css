@@ -47,9 +47,9 @@
 
   /* Glassmorphism variables */
   --glass-bg: rgba(255, 255, 255, 0.45);
-  --glass-bg-hover: rgba(255, 255, 255, 0.65);
+  --glass-bg-hover: rgba(255, 255, 255, 0.85);
   --glass-blur: 12px;
-  --glass-blur-hover: 20px;
+  --glass-blur-hover: 12px;
   --glass-border: rgba(255, 255, 255, 0.3);
   --glass-border-hover: rgba(255, 255, 255, 0.5);
   --glass-inset-highlight: rgba(255, 255, 255, 0.4);
@@ -146,10 +146,11 @@ a:hover { text-decoration: underline; }
   border: 1px solid var(--glass-border);
   border-radius: var(--radius);
   box-shadow: var(--elevation-1);
+  will-change: transform;
   transition: transform var(--transition-glass), box-shadow var(--transition-glass);
 }
 .card:hover {
-  transform: translateY(-4px) scale(1.015);
+  transform: translateY(-4px);
   box-shadow: var(--elevation-3);
 }
 
@@ -187,6 +188,8 @@ a:hover { text-decoration: underline; }
   }
   .card:hover {
     transform: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
   }
 }
 
