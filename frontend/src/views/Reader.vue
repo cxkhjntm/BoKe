@@ -185,23 +185,43 @@ function updateRenderedDocx() {
 }
 
 function renderDocxContent(text, docId) {
-  // Parse [image:N] markers and convert to structured HTML
-  const segments = text.split(/\[image:(\d+)\]/g)
+  // Match both new [image:N] and old [image: data:...;base64,...] formats
+  const regex = /\[image:(?:(\d+)|\s*(data:[^;]+;base64,([A-Za-z0-9+/=\s]+)))\]/g
   const parts = []
-  for (let i = 0; i < segments.length; i++) {
-    if (i % 2 === 0) {
-      // Text segment
-      const trimmed = segments[i].trim()
-      if (trimmed) {
-        parts.push(trimmed.split(/\n\n+/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join(''))
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    // Add text before this match
+    if (match.index > lastIndex) {
+      const textSegment = text.slice(lastIndex, match.index).trim()
+      if (textSegment) {
+        parts.push(textSegment.split(/\n\n+/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join(''))
       }
-    } else {
-      // Image segment — segments[i] is the index
-      const imgIndex = parseInt(segments[i], 10)
+    }
+
+    if (match[1] !== undefined) {
+      // New format: [image:N] — served from disk via API
+      const imgIndex = parseInt(match[1], 10)
       const imgSrc = getDocxImageUrl(docId, imgIndex)
       parts.push(`<img src="${imgSrc}" alt="文档图片 ${imgIndex}" loading="lazy" />`)
+    } else if (match[2]) {
+      // Old format: [image: data:...;base64,...] — inline base64
+      const src = match[2].replace(/\s/g, '')
+      parts.push(`<img src="${src}" alt="文档图片" loading="lazy" />`)
+    }
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // Add remaining text after last match
+  if (lastIndex < text.length) {
+    const textSegment = text.slice(lastIndex).trim()
+    if (textSegment) {
+      parts.push(textSegment.split(/\n\n+/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join(''))
     }
   }
+
   return parts.join('')
 }
 
