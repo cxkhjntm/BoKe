@@ -55,6 +55,35 @@ class TestExtractDocx:
         assert "After image" in result
         assert "[image:0]" in result
 
+    def test_extract_docx_multiple_images_per_paragraph(self, tmp_path):
+        """DOCX with multiple images in one paragraph extracts ALL images."""
+        from docx import Document
+        from docx.shared import Inches
+        from PIL import Image
+        import io
+
+        doc = Document()
+        para = doc.add_paragraph("Text before images. ")
+
+        # Add two images to the same paragraph via runs
+        for color in ["red", "blue"]:
+            img = Image.new("RGB", (10, 10), color=color)
+            img_bytes = io.BytesIO()
+            img.save(img_bytes, format="PNG")
+            img_bytes.seek(0)
+            run = para.add_run()
+            run.add_picture(img_bytes, width=Inches(1))
+
+        para.add_run(" Text after images.")
+        fpath = tmp_path / "multi_image.docx"
+        doc.save(str(fpath))
+
+        result = extract_text(fpath, "docx")
+        assert "[image:0]" in result
+        assert "[image:1]" in result
+        # Both images should be extracted (not just the first)
+        assert result.count("[image:") == 2
+
     def test_extract_docx_saves_images_to_disk(self, tmp_path):
         """DOCX extraction with user_id/doc_id saves images to disk."""
         from docx import Document

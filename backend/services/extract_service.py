@@ -72,7 +72,8 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
                 ct = rel.target_part.content_type
                 ext = _CT_EXT_MAP.get(ct, ".png")
                 image_map[rel.rId] = (ext, img_bytes)
-            except Exception:
+            except Exception as e:
+                logger.warning("Failed to extract image from rel %s: %s", rel.rId, e)
                 continue
 
     # Collect paragraphs and inline shapes in document order
@@ -84,7 +85,7 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
     for para in doc.paragraphs:
         if para.text.strip():
             result_parts.append(para.text)
-        # Interleave inline shapes that belong to this paragraph
+        # Interleave ALL inline shapes that belong to this paragraph
         while shape_idx < len(shapes):
             shape = shapes[shape_idx]
             try:
@@ -93,13 +94,11 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
                     img_index = len(extracted_images)
                     extracted_images.append(image_map[rId])
                     result_parts.append(f"[image:{img_index}]")
-                shape_idx += 1
-            except Exception:
-                shape_idx += 1
-                continue
-            break
+            except Exception as e:
+                logger.warning("Failed to extract inline shape %d: %s", shape_idx, e)
+            shape_idx += 1
 
-    # Add any remaining images
+    # Add any remaining images not captured in the paragraph loop
     while shape_idx < len(shapes):
         shape = shapes[shape_idx]
         try:
@@ -108,8 +107,8 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
                 img_index = len(extracted_images)
                 extracted_images.append(image_map[rId])
                 result_parts.append(f"[image:{img_index}]")
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Failed to extract remaining shape %d: %s", shape_idx, e)
         shape_idx += 1
 
     # Save extracted images to disk if user_id and doc_id are provided
