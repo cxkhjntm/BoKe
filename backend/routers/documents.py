@@ -261,6 +261,39 @@ def retry_document(
     return ok(data=doc_snapshot)
 
 
+@router.post("/{doc_id}/reprocess")
+def reprocess_document(
+    doc_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Reprocess a document to re-extract content with updated code.
+
+    Works for documents in any status (ready/error) except queued/processing.
+    Useful after extraction code improvements to update existing documents.
+    """
+    doc = document_service.reprocess_document(db, doc_id, current_user.id)
+    doc_snapshot = {
+        "id": doc.id,
+        "title": doc.title,
+        "original_filename": doc.original_filename,
+        "file_type": doc.file_type,
+        "file_size": doc.file_size,
+        "file_path": doc.file_path,
+        "thumbnail_path": doc.thumbnail_path,
+        "content_text": doc.content_text,
+        "status": doc.status,
+        "error_message": doc.error_message,
+        "is_favorite": doc.is_favorite,
+        "view_count": doc.view_count,
+        "last_viewed_at": doc.last_viewed_at,
+        "created_at": doc.created_at,
+        "updated_at": doc.updated_at,
+    }
+    _dispatch_processing(doc.id, db, doc)
+    return ok(data=doc_snapshot)
+
+
 @router.patch("/{doc_id}/favorite")
 def toggle_favorite(
     doc_id: int,

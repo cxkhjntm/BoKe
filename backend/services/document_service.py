@@ -129,6 +129,32 @@ def retry_document(db: Session, doc_id: int, user_id: int) -> Document:
     return doc
 
 
+def reprocess_document(db: Session, doc_id: int, user_id: int) -> Document:
+    """Reprocess a document regardless of current status.
+
+    Used to re-extract content after extraction code improvements.
+    Cleans up old extracted images and resets to queued status.
+    """
+    doc = get_document(db, doc_id, user_id)
+    if doc.status in ("queued", "processing"):
+        raise AppException(
+            code=4005,
+            message="Cannot reprocess while document is already queued or processing",
+            status_code=409,
+        )
+    # Clean up old extracted images
+    if doc.file_type == "docx":
+        file_service.delete_docx_images(doc.user_id, doc.id)
+    doc.status = "queued"
+    doc.error_message = None
+    doc.content_text = None
+    doc.thumbnail_path = None
+    db.commit()
+    db.refresh(doc)
+    logger.info("Document reprocess initiated: id=%d", doc_id)
+    return doc
+
+
 def toggle_favorite(db: Session, doc_id: int, user_id: int) -> Document:
     """Toggle favorite status of a document."""
     doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == user_id).first()

@@ -134,6 +134,9 @@ export const deleteDocument = (id) =>
 export const retryDocument = (id) =>
   api.post(`/documents/${id}/retry`)
 
+export const reprocessDocument = (id) =>
+  api.post(`/documents/${id}/reprocess`)
+
 export const toggleFavorite = (id) =>
   api.patch(`/documents/${id}/favorite`)
 

@@ -23,6 +23,14 @@
         >
           {{ retrying ? '重试中...' : '重新处理' }}
         </button>
+        <button
+          v-if="doc.status === 'ready' && doc.file_type === 'docx'"
+          class="btn btn-sm"
+          @click="handleReprocess"
+          :disabled="reprocessing"
+        >
+          {{ reprocessing ? '处理中...' : '重新提取' }}
+        </button>
       </div>
     </div>
 
@@ -118,7 +126,7 @@
 <script setup>
 import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocument, getDocuments, retryDocument, fetchFileBlobUrl, revokeBlobUrlFromCache, getDocxImageUrl } from '../api'
+import { getDocument, getDocuments, retryDocument, reprocessDocument, fetchFileBlobUrl, revokeBlobUrlFromCache, getDocxImageUrl } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -130,6 +138,7 @@ const doc = ref(null)
 const loading = ref(true)
 const error = ref('')
 const retrying = ref(false)
+const reprocessing = ref(false)
 const fileBlobUrl = ref('')
 const fileLoading = ref(false)
 const renderedMd = ref('')
@@ -323,6 +332,21 @@ async function handleRetry() {
     error.value = e.response?.data?.message || '重试失败'
   } finally {
     retrying.value = false
+  }
+}
+
+async function handleReprocess() {
+  reprocessing.value = true
+  try {
+    const res = await reprocessDocument(route.params.id)
+    doc.value = res.data.data
+    updateRenderedMd()
+    updateRenderedDocx()
+    startPolling()
+  } catch (e) {
+    error.value = e.response?.data?.message || '重新处理失败'
+  } finally {
+    reprocessing.value = false
   }
 }
 

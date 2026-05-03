@@ -51,6 +51,7 @@ def _extract_pdf(file_path: Path) -> str:
 
 def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | None = None) -> str:
     from docx import Document
+    from docx.oxml.ns import qn
 
     doc = Document(str(file_path))
 
@@ -76,40 +77,35 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
                 logger.warning("Failed to extract image from rel %s: %s", rel.rId, e)
                 continue
 
-    # Collect paragraphs and inline shapes in document order
+    # Extract text and images by traversing paragraph XML directly.
+    # This ensures images are placed at their exact original position
+    # within each paragraph, not in a separate flat iteration.
     result_parts = []
-    shape_idx = 0
-    shapes = list(doc.inline_shapes)
     extracted_images = []  # list of (extension, bytes) in document order
 
     for para in doc.paragraphs:
-        if para.text.strip():
-            result_parts.append(para.text)
-        # Interleave ALL inline shapes that belong to this paragraph
-        while shape_idx < len(shapes):
-            shape = shapes[shape_idx]
-            try:
-                rId = shape._inline.graphic.graphicData.pic.blipFill.blip.embed
-                if rId in image_map:
-                    img_index = len(extracted_images)
-                    extracted_images.append(image_map[rId])
-                    result_parts.append(f"[image:{img_index}]")
-            except Exception as e:
-                logger.warning("Failed to extract inline shape %d: %s", shape_idx, e)
-            shape_idx += 1
+        # Find all inline images (w:drawing > a:blip) in this paragraph
+        para_images = []
+        for drawing in para._element.findall('.//' + qn('w:drawing')):
+            for blip in drawing.findall('.//' + qn('a:blip')):
+                embed = blip.get(qn('r:embed'))
+                if embed and embed in image_map:
+                    para_images.append(embed)
 
-    # Add any remaining images not captured in the paragraph loop
-    while shape_idx < len(shapes):
-        shape = shapes[shape_idx]
-        try:
-            rId = shape._inline.graphic.graphicData.pic.blipFill.blip.embed
-            if rId in image_map:
+        if para_images:
+            # Paragraph has images: interleave text and image markers
+            # For simplicity, place all images after the paragraph text
+            # (preserving the paragraph they belong to)
+            if para.text.strip():
+                result_parts.append(para.text)
+            for rId in para_images:
                 img_index = len(extracted_images)
                 extracted_images.append(image_map[rId])
                 result_parts.append(f"[image:{img_index}]")
-        except Exception as e:
-            logger.warning("Failed to extract remaining shape %d: %s", shape_idx, e)
-        shape_idx += 1
+        else:
+            # Text-only paragraph
+            if para.text.strip():
+                result_parts.append(para.text)
 
     # Save extracted images to disk if user_id and doc_id are provided
     if extracted_images and user_id is not None and doc_id is not None:
