@@ -29,7 +29,10 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting application...")
 
-    # Create tables
+    # Run Alembic migrations to bring existing databases up to date
+    _run_migrations()
+
+    # Create tables (handles brand-new databases)
     Base.metadata.create_all(bind=engine)
     logger.info("Database tables created/verified.")
 
@@ -48,6 +51,21 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Application shutting down.")
+
+
+def _run_migrations():
+    """Run Alembic migrations to upgrade the database schema."""
+    from alembic.config import Config
+    from alembic import command
+
+    project_root = Path(__file__).resolve().parent.parent
+    alembic_cfg = Config(str(project_root / "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", str(project_root / "alembic"))
+    try:
+        command.upgrade(alembic_cfg, "head")
+        logger.info("Database migrations applied successfully.")
+    except Exception as e:
+        logger.warning("Migration check failed (may be first run): %s", e)
 
 
 def _setup_fts5():
