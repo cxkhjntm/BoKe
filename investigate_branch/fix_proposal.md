@@ -1,256 +1,173 @@
-# Fix Proposal: Profile File Serve Authentication
+# Fix Proposal: DOCX Embedded Images — Extract and Render Inline
 
-## Problem Summary
-
-Profile file serve endpoints (`GET /api/v1/files/profile/avatar` and `GET /api/v1/files/profile/background`) fail with 401 when loaded from `<img>` tags or CSS `url()` because:
-
-1. Both endpoints use `Depends(get_current_user)` which throws HTTP 401 when no `Authorization` header is present (`backend/middleware/auth.py:34-39`)
-2. Browser `<img>` and CSS `url()` requests cannot include custom headers
-3. The frontend correctly passes `?token=...` query param (`frontend/src/stores/auth.js:14,19`), but the dependency throws before the endpoint body runs
-4. The `_resolve_user` helper (`backend/routers/files.py:36-47`) with query-param fallback is never reached
-
-## Affected Endpoints
-
-| Endpoint | File | Line |
-|----------|------|------|
-| `GET /api/v1/files/profile/avatar` | `backend/routers/files.py` | 133 |
-| `GET /api/v1/files/profile/background` | `backend/routers/files.py` | 161 |
-
-Other endpoints using the same pattern (`serve_original`, `serve_thumbnail`) also share this issue but are loaded via `<iframe>` or JavaScript `fetch()` which can include headers.
+**Date**: 2026-05-03
+**Branch**: `investigate/docx-image-extraction`
+**Status**: PROPOSED
 
 ---
 
-## Proposal A: Add `get_current_user_optional` Dependency
+## 1. Approach Overview
 
-### Description
+**Strategy**: Extract images to disk during DOCX processing, replace inline base64 with lightweight index markers, add a serving endpoint, and render images inline on the frontend.
 
-Create a new dependency `get_current_user_optional` that returns `Optional[User]` -- returning `None` instead of raising 401 when no credentials are provided. Use this for profile endpoints. The existing `get_current_user` remains unchanged for all other endpoints.
+**Marker format**: `[image:N]` where N is a 0-based index into the extracted images for that document.
 
-### Code Changes
-
-**File: `backend/middleware/auth.py`**
-
-Add after `get_current_user` (after line 43):
-
-```python
-def get_current_user_optional(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db),
-) -> Optional[User]:
-    """Authenticate via Authorization header, returning None if no credentials provided."""
-    if not credentials:
-        return None
-    token = credentials.credentials
-    if token.startswith("sk-"):
-        return _authenticate_api_key(token, db, request)
-    return _authenticate_jwt(token, db, request)
+Example `content_text` after fix:
 ```
+这是一段文字。
 
-**File: `backend/routers/files.py`**
+[image:0]
 
-1. Update import (line 11):
-```python
-from backend.middleware.auth import get_current_user, get_current_user_optional, authenticate_from_token
+这是另一段文字。
+
+[image:1]
+
+更多文字内容。
 ```
-
-2. Update `serve_avatar` (line 137):
-```python
-current_user: Optional[User] = Depends(get_current_user_optional),
-```
-
-3. Update `serve_background` (line 165):
-```python
-current_user: Optional[User] = Depends(get_current_user_optional),
-```
-
-No other changes needed -- `_resolve_user` already handles the `None` case correctly.
-
-### Resource Impact
-
-| Resource | Impact |
-|----------|--------|
-| CPU | None -- same logic, different flow |
-| Memory | None |
-| Storage | None |
-| Dev Time | ~15 min |
-| Test Time | ~20 min (unit tests for new dependency + integration tests for endpoints) |
-| Deploy Risk | Very Low -- no existing behavior changes |
-| Rollback Difficulty | Trivial -- remove the new function and revert imports |
-
-### Security Analysis
-
-- **No weakening of existing auth**: `get_current_user` is untouched; all other endpoints keep strict auth
-- **Token validation unchanged**: `authenticate_from_token` still validates JWT expiry, signature, and user status
-- **Token in query param**: The frontend already sends tokens in query params. This is the established pattern. Tokens in URLs are logged in server access logs and browser history -- this is an accepted tradeoff for image loading
-- **No new attack surface**: The optional dependency delegates to the same `_authenticate_jwt` and `_authenticate_api_key` functions
-
-### Risks
-
-- Low: If a future developer uses `get_current_user_optional` where `get_current_user` is needed, they could forget to check for `None`. This is mitigated by the existing `_resolve_user` pattern which already raises if neither auth method succeeds.
 
 ---
 
-## Proposal B: Modify `get_current_user` to Return `Optional[User]`
+## 2. Affected Files and Changes
 
-### Description
-
-Change `get_current_user` to return `Optional[User]` (returning `None` when no credentials) instead of raising 401. All callers must then handle the `None` case. The `_resolve_user` helper already does this.
-
-### Code Changes
-
-**File: `backend/middleware/auth.py`**
-
-Modify `get_current_user` (lines 28-43):
+### 2.1 Backend: `backend/services/file_service.py`
+**Change**: Add `save_docx_images()` and `delete_docx_images()` helpers.
 
 ```python
-def get_current_user(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db),
-) -> Optional[User]:
-    """Authenticate via Authorization header (JWT or API Key). Returns None if no credentials."""
-    if not credentials:
-        return None
-    token = credentials.credentials
-    if token.startswith("sk-"):
-        return _authenticate_api_key(token, db, request)
-    return _authenticate_jwt(token, db, request)
+def save_docx_images(user_id: int, doc_id: int, images: list[tuple[str, bytes]]) -> list[str]:
+    """Save extracted DOCX images to storage/{user_id}/docx_images/{doc_id}/.
+    images: list of (extension, binary_data)
+    Returns list of relative paths.
+    """
+    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
+    img_dir.mkdir(parents=True, exist_ok=True)
+    paths = []
+    for i, (ext, data) in enumerate(images):
+        filename = f"{i}{ext}"
+        (img_dir / filename).write_bytes(data)
+        paths.append(str((img_dir / filename).relative_to(STORAGE_PATH)))
+    return paths
+
+def delete_docx_images(user_id: int, doc_id: int) -> None:
+    """Delete all extracted images for a DOCX document."""
+    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
+    if img_dir.exists():
+        import shutil
+        shutil.rmtree(img_dir)
 ```
 
-**File: `backend/routers/files.py`**
+### 2.2 Backend: `backend/services/extract_service.py`
+**Change**: `_extract_docx()` now saves images to disk and returns lightweight markers.
 
-No changes needed -- `_resolve_user` and all endpoint handlers already work correctly.
+- Accept additional params: `user_id`, `doc_id`
+- Save images via `file_service.save_docx_images()`
+- Return `content_text` with `[image:N]` markers instead of base64
 
-**Other files using `get_current_user`** (must be audited):
+### 2.3 Backend: `backend/routers/files.py`
+**Change**: Add new endpoint for serving extracted DOCX images.
 
-All endpoints that use `Depends(get_current_user)` and expect a non-None user must add their own 401 check. This requires finding and updating every caller:
-
-```bash
-grep -rn "Depends(get_current_user)" backend/
 ```
-
-Each caller needs:
-```python
-if not current_user:
-    raise HTTPException(status_code=401, detail={"code": 4001, "message": "Authentication required"})
+GET /api/v1/files/{doc_id}/docx_images/{image_index}
 ```
+- Auth: JWT Bearer or `?token=` query param (same as thumbnail)
+- Ownership check: verify `doc.user_id == user.id`
+- Path validation: prevent traversal via index bounds check
+- Serve with correct MIME type from file extension
 
-Or use a pattern like:
-```python
-user = current_user or _resolve_user(token, current_user, db, request)
-```
+### 2.4 Backend: `backend/services/processing_service.py`
+**Change**: Pass `user_id` and `doc_id` to `extract_service.extract_text()` for DOCX.
 
-### Resource Impact
+### 2.5 Backend: `backend/services/document_service.py`
+**Change**: On document delete, also call `file_service.delete_docx_images()`.
 
-| Resource | Impact |
-|----------|--------|
-| CPU | None |
-| Memory | None |
-| Storage | None |
-| Dev Time | ~45 min (audit + update all callers) |
-| Test Time | ~60 min (re-test all authenticated endpoints) |
-| Deploy Risk | Medium -- changes behavior of a core auth dependency |
-| Rollback Difficulty | Moderate -- must revert all caller updates |
+### 2.6 Frontend: `frontend/src/views/Reader.vue`
+**Change**: Replace plain text rendering with structured HTML for DOCX.
 
-### Security Analysis
+- Parse `content_text` with regex: `/\[image:(\d+)\]/g`
+- Split into segments: `[{type: "text", value: "..."}, {type: "image", index: N}, ...]`
+- Render text segments as `<p>` tags, image segments as `<img>` tags
+- Image `src` = `/api/v1/files/{docId}/docx_images/{index}?token={jwt}`
+- Use `v-html` with DOMPurify sanitization (same pattern as Markdown)
+- Add CSS styles for DOCX images (reuse `.md-content img` styles)
 
-- **Weakens core dependency**: `get_current_user` no longer enforces authentication by default
-- **Caller responsibility**: Every endpoint must now handle auth enforcement itself -- easy to miss
-- **Regression risk**: If any caller is missed, that endpoint becomes publicly accessible
-- **Same token-in-query-param tradeoff** as Proposal A
-
-### Risks
-
-- High: Any missed caller becomes an unauthenticated endpoint. This is the most significant risk. A thorough audit is required, and future endpoints using this dependency must remember to check for `None`.
+### 2.7 Frontend: `frontend/src/api/index.js`
+**Change**: Add `fetchDocxImageUrl(docId, imageIndex)` helper that returns authenticated URL.
 
 ---
 
-## Proposal C: Manual Auth in Profile Endpoints
+## 3. Backward Compatibility
 
-### Description
+Existing documents with `[image: data:...;base64,...]` markers will continue to display as text. Two options:
 
-Remove `Depends(get_current_user)` from profile endpoints entirely. Manually extract the token from the `Authorization` header or `token` query param and call `authenticate_from_token` directly.
+| Option | Description | Effort |
+|--------|-------------|--------|
+| A. Auto-migrate | Add a one-time migration script that re-processes all existing DOCX documents | Medium (need to handle edge cases) |
+| B. Manual re-upload | Users re-upload affected documents | Zero effort, but poor UX |
+| C. Frontend dual-format | Frontend handles both old base64 and new index markers | Low effort, covers both |
 
-### Code Changes
-
-**File: `backend/routers/files.py`**
-
-Modify `serve_avatar` (lines 133-158):
-
-```python
-@router.get("/profile/avatar")
-async def serve_avatar(
-    request: Request,
-    token: Optional[str] = Query(None, description="JWT token for img auth"),
-    db: Session = Depends(get_db),
-):
-    user = _authenticate_from_request(request, token, db)
-    # ... rest unchanged
-```
-
-Modify `serve_background` (lines 161-186):
-
-```python
-@router.get("/profile/background")
-async def serve_background(
-    request: Request,
-    token: Optional[str] = Query(None, description="JWT token for img auth"),
-    db: Session = Depends(get_db),
-):
-    user = _authenticate_from_request(request, token, db)
-    # ... rest unchanged
-```
-
-Add helper function:
-
-```python
-def _authenticate_from_request(request: Request, token: Optional[str], db: Session) -> User:
-    """Authenticate from Authorization header or query-param token."""
-    auth_header = request.headers.get("authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        raw_token = auth_header[7:]
-        return authenticate_from_token(raw_token, db, request)
-    if token:
-        return authenticate_from_token(token, db, request)
-    raise AppException(code=4001, message="Authentication required", status_code=401)
-```
-
-### Resource Impact
-
-| Resource | Impact |
-|----------|--------|
-| CPU | None |
-| Memory | None |
-| Storage | None |
-| Dev Time | ~20 min |
-| Test Time | ~20 min |
-| Deploy Risk | Low -- only touches profile endpoints |
-| Rollback Difficulty | Trivial -- revert two endpoints |
-
-### Security Analysis
-
-- **No change to existing dependencies**: `get_current_user` untouched
-- **Same auth logic**: `authenticate_from_token` performs identical validation
-- **Duplicated pattern**: Manual header extraction duplicates what `HTTPBearer` already does
-- **Same token-in-query-param tradeoff** as Proposal A
-
-### Risks
-
-- Low: Slight code duplication in extracting the Bearer token from the header. Could diverge from the main auth path if `HTTPBearer` behavior changes.
+**Recommendation**: Option C — the frontend can detect both marker formats. Old markers render as base64 `<img>` (works, just less efficient), new markers render via serving endpoint. No migration needed.
 
 ---
 
-## Recommendation
+## 4. Resource Impact Analysis
 
-**Proposal A is the recommended approach.**
+### 4.1 Storage
 
-Reasons:
+| Metric | Before (base64 in DB) | After (files on disk) | Delta |
+|--------|----------------------|----------------------|-------|
+| DB `content_text` size | ~1.33x original image bytes (base64) | ~0.001x (just markers) | **-99% DB storage for images** |
+| Disk storage | 0 (images in DB) | ~1.0x original image bytes | **+disk, but native format** |
+| Example: 10 images × 500KB | ~6.65 MB in DB | ~5 MB on disk + ~100 bytes in DB | Net savings ~1.6 MB per doc |
 
-1. **Minimal change surface**: Adds one new function, changes two import lines, changes two `Depends()` calls. No existing code behavior changes.
-2. **Leverages existing infrastructure**: `_resolve_user` already handles the `None` -> query-param fallback correctly. No new logic needed.
-3. **Zero regression risk**: `get_current_user` is untouched. All existing endpoints keep their strict auth.
-4. **Clean separation**: "Optional auth" and "required auth" are distinct concerns with distinct dependencies.
-5. **Lowest rollback cost**: Three lines changed in `files.py`, one new function in `auth.py`.
+### 4.2 CPU
 
-Proposal B is too risky because it changes a core dependency's contract and requires auditing/updating every caller. Proposal C works but introduces unnecessary duplication of the Bearer token extraction logic.
+| Operation | Before | After | Delta |
+|-----------|--------|-------|-------|
+| Upload processing | base64 encode (fast) | file write (fast) | Negligible |
+| Serving | N/A (data in DB response) | File read + stream | Minimal increase |
+| Frontend parse | N/A (plain text) | Regex split | Negligible |
+
+### 4.3 Memory
+
+| Scenario | Before | After | Delta |
+|----------|--------|-------|-------|
+| DB query for document | Loads full base64 into memory | Loads small marker text | **-significant for image-heavy docs** |
+| Frontend render | Entire base64 in DOM as text | Images loaded lazily via `<img>` | **-significant** |
+
+### 4.4 Network
+
+| Scenario | Before | After | Delta |
+|----------|--------|-------|-------|
+| GET /documents/{id} | Returns full base64 in JSON | Returns small markers | **-90%+ for image-heavy docs** |
+| Image loading | N/A | Separate requests per image | +HTTP overhead per image |
+
+### 4.5 Development & Risk
+
+| Dimension | Estimate |
+|-----------|----------|
+| Backend changes | ~3 files, ~80 lines new/modified |
+| Frontend changes | ~1 file, ~50 lines new/modified |
+| Dev time | 2-4 hours |
+| Test time | 1-2 hours |
+| Deployment risk | LOW — no DB schema change, no migration required |
+| Rollback difficulty | EASY — `git revert` the commit; old docs still work with base64 format |
+
+---
+
+## 5. Security Considerations
+
+1. **Auth on image endpoint**: Must verify JWT + document ownership (same pattern as existing endpoints)
+2. **Path traversal**: Index-based lookup (not filename) prevents traversal attacks
+3. **XSS**: DOMPurify sanitization on frontend (already used for Markdown)
+4. **File type validation**: Only serve files from the docx_images directory, verify MIME types
+
+---
+
+## 6. Recommended Implementation Order
+
+1. `file_service.py` — add `save_docx_images()` / `delete_docx_images()`
+2. `extract_service.py` — modify `_extract_docx()` to save images and use `[image:N]` markers
+3. `processing_service.py` — pass `user_id`/`doc_id` through to extraction
+4. `files.py` router — add `GET /{doc_id}/docx_images/{index}` endpoint
+5. `document_service.py` — cleanup images on document delete
+6. `Reader.vue` — parse markers and render inline images
+7. Tests — update extraction tests, add integration test for image serving
