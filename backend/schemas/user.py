@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class LoginRequest(BaseModel):
@@ -18,3 +18,14 @@ class RefreshRequest(BaseModel):
 
 class LogoutRequest(BaseModel):
     refresh_token: str
+
+
+class ProfileOut(BaseModel):
+    avatar_path: str | None = None
+    background_path: str | None = None
+    background_opacity: float = 0.3
+    model_config = {"from_attributes": True}
+
+
+class ProfileUpdate(BaseModel):
+    background_opacity: float = Field(ge=0.0, le=1.0)

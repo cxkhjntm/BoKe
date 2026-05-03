@@ -45,6 +45,11 @@ MAX_UPLOAD_SIZE_MB = int(_get_env("MAX_UPLOAD_SIZE_MB", "50"))
 MAX_UPLOAD_SIZE_BYTES = MAX_UPLOAD_SIZE_MB * 1024 * 1024
 ALLOWED_EXTENSIONS = set(_get_env("ALLOWED_EXTENSIONS", "pdf,docx,md,png,jpg,jpeg").split(","))
 
+# --- Image Upload (Profile) ---
+IMAGE_MAX_UPLOAD_SIZE_MB = int(_get_env("IMAGE_MAX_UPLOAD_SIZE_MB", "2"))
+IMAGE_MAX_UPLOAD_SIZE_BYTES = IMAGE_MAX_UPLOAD_SIZE_MB * 1024 * 1024
+IMAGE_ALLOWED_EXTENSIONS = set(_get_env("IMAGE_ALLOWED_EXTENSIONS", "png,jpg,jpeg,webp,gif").split(","))
+
 # --- Logging ---
 LOG_LEVEL = _get_env("LOG_LEVEL", "INFO").upper()
 

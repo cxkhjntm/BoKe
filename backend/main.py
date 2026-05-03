@@ -18,7 +18,7 @@ from backend.middleware.rate_limit import RateLimitMiddleware
 from backend.middleware.logging import RequestLoggingMiddleware
 from backend.services.auth_service import init_admin
 
-from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health, admin, dashboard
+from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health, admin, dashboard, profile
 
 setup_logger()
 logger = get_logger("main")
@@ -162,6 +162,7 @@ app.include_router(milvus.router)
 app.include_router(api_keys.router)
 app.include_router(admin.router)
 app.include_router(dashboard.router)
+app.include_router(profile.router)
 
 # Serve Vue3 frontend (built static files)
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"

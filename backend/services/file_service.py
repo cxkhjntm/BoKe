@@ -10,7 +10,7 @@ logger = get_logger("services.file")
 def get_user_storage(user_id: int) -> Path:
     """Get or create user storage directory."""
     user_dir = STORAGE_PATH / str(user_id)
-    for sub in ("original", "processed", "thumbnails"):
+    for sub in ("original", "processed", "thumbnails", "profile"):
         (user_dir / sub).mkdir(parents=True, exist_ok=True)
     return user_dir
 

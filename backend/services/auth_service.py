@@ -90,6 +90,13 @@ def authenticate(db: Session, username: str, password: str) -> dict:
         "access_token": access_token,
         "refresh_token": refresh_token,
         "token_type": "bearer",
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "avatar_path": user.avatar_path,
+            "background_path": user.background_path,
+            "background_opacity": user.background_opacity,
+        },
     }
 
 

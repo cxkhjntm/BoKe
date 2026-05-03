@@ -130,6 +130,62 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
     )
 
 
+@router.get("/profile/avatar")
+async def serve_avatar(
+    request: Request,
+    token: Optional[str] = Query(None, description="JWT token for img auth"),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = _resolve_user(token, current_user, db, request)
+
+    if not user.avatar_path:
+        raise AppException(code=4004, message="No avatar available", status_code=404)
+
+    abs_path = file_service.get_file_path(user.avatar_path)
+    if not abs_path.exists():
+        raise AppException(code=4004, message="Avatar not found on disk", status_code=404)
+
+    def file_iter():
+        with open(abs_path, "rb") as f:
+            while chunk := f.read(CHUNK_SIZE):
+                yield chunk
+
+    return StreamingResponse(
+        file_iter(),
+        media_type=_get_mime(abs_path),
+        headers={"Content-Disposition": "inline", "Accept-Ranges": "bytes"},
+    )
+
+
+@router.get("/profile/background")
+async def serve_background(
+    request: Request,
+    token: Optional[str] = Query(None, description="JWT token for img auth"),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    user = _resolve_user(token, current_user, db, request)
+
+    if not user.background_path:
+        raise AppException(code=4004, message="No background available", status_code=404)
+
+    abs_path = file_service.get_file_path(user.background_path)
+    if not abs_path.exists():
+        raise AppException(code=4004, message="Background not found on disk", status_code=404)
+
+    def file_iter():
+        with open(abs_path, "rb") as f:
+            while chunk := f.read(CHUNK_SIZE):
+                yield chunk
+
+    return StreamingResponse(
+        file_iter(),
+        media_type=_get_mime(abs_path),
+        headers={"Content-Disposition": "inline", "Accept-Ranges": "bytes"},
+    )
+
+
 @router.get("/{doc_id}/thumbnail")
 async def serve_thumbnail(
     doc_id: int,
