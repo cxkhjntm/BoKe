@@ -1,118 +1,129 @@
-# Diagnosis Report: Avatar & Background Display Bug
+# Diagnosis Report: DOCX Embedded Images Displayed as Base64 Text
 
-**Date:** 2026-05-03
-**Branch:** `investigate/avatar-display-401`
-**Severity:** HIGH - Core user feature broken
-
----
-
-## 1. Problem Statement
-
-After uploading avatar and background images via the personal settings page (top-right corner), the avatar displays as a broken image icon and the background does not change.
+**Date**: 2026-05-03
+**Branch**: `investigate/docx-image-extraction`
+**Severity**: HIGH (functional defect — images completely invisible in DOCX preview)
 
 ---
 
-## 2. Root Cause
+## 1. Problem Description
 
-The profile file **serve endpoints** (`GET /api/v1/files/profile/avatar` and `GET /api/v1/files/profile/background`) return **401 Unauthorized** when accessed via browser `<img>` tags and CSS `background-image: url()`.
+When a `.docx` file containing embedded images is uploaded, the document preview renders image data as a literal base64 text string:
 
-### Root Cause Chain
+```
+[image: data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAABPM...]
+```
 
-1. **Browser `<img>` and CSS `url()` requests CANNOT include Authorization headers.**
-2. The serve endpoints declare `current_user: Optional[User] = Depends(get_current_user)`.
-3. `get_current_user` (in `backend/middleware/auth.py:28-39`) **throws HTTPException 401 immediately** when no `Authorization` header is present — it never returns `None`.
-4. The `Optional[User]` type hint is misleading; the function returns `User` or raises, never `None`.
-5. A `_resolve_user` helper exists with `token` query-param fallback, but **is never reached** because `Depends(get_current_user)` fails first in the dependency injection chain.
+instead of displaying the actual image. The text can be extremely long (megabytes), destroying readability.
 
----
+## 2. Root Cause Analysis
 
-## 3. Evidence
+The defect spans two layers — **backend extraction** and **frontend rendering** — with no bridge between them.
 
-### 3.1 Backend Auth Dependency (CRITICAL)
+### 2.1 Backend: Inline Base64 Markers in `content_text`
 
-**File:** `backend/middleware/auth.py` lines 28-39
+**File**: `backend/services/extract_service.py`, function `_extract_docx()` (lines 46-98)
 
+The extraction pipeline:
+1. Builds an image map from DOCX relationships (lines 53-62): reads each image blob, base64-encodes it, stores `{rId: (content_type, base64_string)}`.
+2. Iterates paragraphs and inline shapes in document order (lines 64-97).
+3. For each inline shape, appends a marker string to the text output (line 79):
+   ```python
+   result_parts.append(f"[image: data:{ct};base64,{b64}]")
+   ```
+4. Joins all parts with `\n` and stores the result in `doc.content_text` (a single `Text` column in SQLite).
+
+**Problem**: The entire base64-encoded image (potentially several MB) is embedded directly in the text content. There is no image extraction to separate files, no URL reference, and no structured marker format.
+
+### 2.2 Frontend: Plain Text Rendering with No Image Parsing
+
+**File**: `frontend/src/views/Reader.vue`, line 72-75
+
+```vue
+<div v-else-if="doc.file_type === 'docx'" class="text-viewer">
+  <div v-if="doc.status === 'ready' && doc.content_text" class="text-content">{{ doc.content_text }}</div>
+</div>
+```
+
+**Problem**: Vue's `{{ }}` text interpolation escapes all HTML. The base64 marker is rendered as literal text — it is never parsed into an `<img>` tag. Even if it were, `content_text` is treated as a plain string with no structured parsing.
+
+### 2.3 No Supporting Infrastructure
+
+- **No image storage**: Extracted images are not saved to disk; they exist only as base64 strings in the database text column.
+- **No image serving endpoint**: The file serving router (`backend/routers/files.py`) only serves original files and thumbnails — there is no endpoint for extracted document images.
+- **No image URL schema**: There is no mechanism to reference extracted images by URL.
+
+## 3. Call Chain
+
+```
+User uploads .docx
+  → POST /api/v1/documents (documents.py:109)
+    → file_service.save_file() — saves original to storage/{user_id}/original/{uuid}.docx
+    → document_service.create_document() — creates DB row with status="queued"
+    → _dispatch_processing() — enqueues Celery task
+      → process_document_task (tasks.py)
+        → processing_service.process_document()
+          → extract_service.extract_text(file_path, "docx")
+            → _extract_docx(file_path)
+              → Builds image_map from DOCX relationships
+              → Iterates paragraphs + inline_shapes
+              → Appends "[image: data:{ct};base64,{b64}]" markers
+              → Returns joined text string
+            → Stored in doc.content_text
+
+User opens document preview
+  → GET /api/v1/documents/{id}
+    → Returns doc with content_text containing base64 markers
+  → Reader.vue renders {{ doc.content_text }} as plain text
+    → Base64 markers displayed as literal text strings ← DEFECT
+```
+
+## 4. Evidence
+
+### 4.1 Code Evidence — Backend Marker Format
+`backend/services/extract_service.py:79`:
 ```python
-def get_current_user(
-    request: Request,
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
-    db: Session = Depends(get_db),
-) -> User:
-    if not credentials:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": 4001, "message": "Authentication required", "data": None},
-        )
+result_parts.append(f"[image: data:{ct};base64,{b64}]")
 ```
 
-### 3.2 Serve Endpoints (BROKEN)
+### 4.2 Code Evidence — Frontend Plain Text Rendering
+`frontend/src/views/Reader.vue:73`:
+```vue
+<div class="text-content">{{ doc.content_text }}</div>
+```
 
-**File:** `backend/routers/files.py` lines 133-186
-
+### 4.3 Data Model Limitation
+`backend/models/document.py:29`:
 ```python
-@router.get("/profile/avatar")
-async def serve_avatar(
-    ...
-    current_user: Optional[User] = Depends(get_current_user),  # <-- Fails here
-    ...
-):
-    user = _resolve_user(token, current_user, db, request)  # <-- Never reached
+content_text = Column(Text, nullable=True)
 ```
+Single text column — no structured content or separate image references.
 
-### 3.3 Frontend URL Construction (CORRECT)
+### 4.4 No Image Serving Endpoint
+`backend/routers/files.py` serves only:
+- `GET /api/v1/files/{doc_id}/original` — the original uploaded file
+- `GET /api/v1/files/{doc_id}/thumbnail` — the generated thumbnail
 
-**File:** `frontend/src/stores/auth.js` lines 12-19
+No endpoint exists for extracted document images.
 
-```javascript
-const avatarUrl = computed(() => {
-    if (!userProfile.value?.avatar_path || !accessToken.value) return null
-    return `/api/v1/files/profile/avatar?token=${encodeURIComponent(accessToken.value)}`
-})
-```
+## 5. Impact
 
-The frontend correctly passes JWT as a `token` query param. The problem is purely backend-side.
+- **Severity**: HIGH — images in DOCX documents are completely non-functional
+- **Scope**: All uploaded `.docx` files containing images
+- **User experience**: Base64 text blobs destroy readability; users see megabytes of encoded garbage
+- **Data bloat**: Base64 encoding increases image size by ~33%, stored in the database text column
 
-### 3.4 Upload Flow (WORKS)
+## 6. Trigger Conditions
 
-- Frontend uploads via axios with `Authorization` header → backend receives header → `get_current_user` succeeds → file saved to `storage/{user_id}/profile/{uuid}{ext}`
-- Upload succeeds, path stored in DB, but display fails on retrieval.
+1. Upload a `.docx` file containing at least one inline image
+2. Wait for processing to complete (status = "ready")
+3. Open the document in the Reader view
+4. Observe `[image: data:image/png;base64,...]` as literal text instead of rendered image
 
-### 3.5 Contrast with Working File Serving
+## 7. Recommended Fix Direction
 
-Document files (`/api/v1/files/{doc_id}/original`) work because the frontend fetches them via `fetchFileBlobUrl()` which uses `api.get()` (axios) — the request interceptor adds the `Authorization: Bearer` header. Profile images are loaded directly by the browser (no axios), so no header is attached.
+The fix requires changes at three layers:
 
----
-
-## 4. Impact Analysis
-
-| Component | Status |
-|-----------|--------|
-| Upload (avatar) | WORKING |
-| Upload (background) | WORKING |
-| Display (avatar) | BROKEN - 401 |
-| Display (background) | BROKEN - 401 |
-| Document file serving | WORKING (uses axios) |
-
----
-
-## 5. Verified Facts
-
-- Nginx config correctly proxies `/api/` to backend. Not the issue.
-- Vite proxy correctly proxies `/api` to `localhost:8000`. Not the issue.
-- No static file mount for storage directory — files are served through authenticated endpoints. This is intentional.
-- Database: User 1 has `avatar_path = None`, `background_path = None` (no successful display has occurred).
-
----
-
-## 6. Recommended Fix Direction
-
-Create a `get_current_user_optional` dependency that returns `Optional[User]` (returns `None` when no credentials, instead of raising 401). Use it for the profile file serve endpoints. This allows the existing `_resolve_user` token query-param fallback to work.
-
----
-
-## 7. Trigger Conditions
-
-1. User uploads avatar/background via settings modal (works)
-2. Browser renders `<img :src="avatarUrl">` or `background-image: url(...)` (no Authorization header)
-3. Backend `get_current_user` dependency throws 401
-4. Image fails to load → broken icon / no background change
+1. **Backend extraction**: Save extracted images to disk (e.g., `storage/{user_id}/docx_images/{doc_id}/{index}.{ext}`), store only lightweight markers in `content_text` (e.g., `[image:docx_images/{doc_id}/0.png]`)
+2. **Backend serving**: Add an endpoint to serve extracted DOCX images (with auth)
+3. **Frontend rendering**: Parse image markers in `content_text`, split into text segments and `<img>` tags, render as structured HTML (similar to how Markdown is rendered with `v-html` + DOMPurify)
