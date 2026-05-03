@@ -114,9 +114,23 @@
 
 ## 5. Post-Review Action Items
 
-- [ ] Implement Fix A: Remove `break` in extract_service.py
-- [ ] Implement Fix D: Add extraction warning logs
-- [ ] Implement Fix C: Frontend dual-format in Reader.vue
-- [ ] Run full test suite
-- [ ] Manual verification with sample DOCX files
+- [x] Implement Fix A: Remove `break` in extract_service.py (commit ae5d5e8)
+- [x] Implement Fix D: Add extraction warning logs (commit ae5d5e8)
+- [x] Implement Fix C: Frontend dual-format in Reader.vue (commit 09035db)
+- [x] Run full test suite — 114 passed, 0 failed
+- [ ] Manual verification with sample DOCX files (requires running app)
 - [ ] (Follow-up) Implement Fix B: Anchored image support
+
+## 6. Final Verification (2026-05-03)
+
+| Check | Result |
+|-------|--------|
+| Full test suite | ✅ 114 passed, 0 failed |
+| extract_service.py coverage | 80% |
+| New multi-image test | ✅ Passes |
+| Backward compat (base64 regex) | ✅ Regex matches both formats |
+| DOMPurify safety | ✅ data: URIs allowed on img src |
+| No schema changes | ✅ Confirmed |
+| Rollback plan | ✅ git revert on fix commits |
+
+**Status**: READY TO MERGE
