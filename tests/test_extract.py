@@ -31,7 +31,7 @@ class TestExtractDocx:
         assert result == "" or result is None
 
     def test_extract_docx_with_image_placeholder(self, tmp_path):
-        """DOCX with inline image includes image data marker."""
+        """DOCX with inline image includes image index marker."""
         from docx import Document
         from docx.shared import Inches
         from PIL import Image
@@ -53,7 +53,38 @@ class TestExtractDocx:
         result = extract_text(fpath, "docx")
         assert "Before image" in result
         assert "After image" in result
-        assert "[image:" in result
+        assert "[image:0]" in result
+
+    def test_extract_docx_saves_images_to_disk(self, tmp_path):
+        """DOCX extraction with user_id/doc_id saves images to disk."""
+        from docx import Document
+        from docx.shared import Inches
+        from PIL import Image
+        import io
+        from unittest.mock import patch
+
+        img = Image.new("RGB", (10, 10), color="blue")
+        img_bytes = io.BytesIO()
+        img.save(img_bytes, format="PNG")
+        img_bytes.seek(0)
+
+        doc = Document()
+        doc.add_paragraph("Text with image")
+        doc.add_picture(img_bytes, width=Inches(1))
+        fpath = tmp_path / "with_image.docx"
+        doc.save(str(fpath))
+
+        saved_images = []
+        with patch("backend.services.file_service.save_docx_images") as mock_save:
+            mock_save.return_value = 1
+            result = extract_text(fpath, "docx", user_id=1, doc_id=42)
+            assert mock_save.called
+            saved_images = mock_save.call_args[0][2]  # third arg is the images list
+
+        assert "[image:0]" in result
+        assert len(saved_images) == 1
+        assert saved_images[0][0] == ".png"  # extension
+        assert len(saved_images[0][1]) > 0    # image bytes
 
     def test_extract_unknown_type_returns_none(self, tmp_path):
         """Unknown file type returns None."""

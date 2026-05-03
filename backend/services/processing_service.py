@@ -62,7 +62,9 @@ def process_document(db: Session, doc) -> None:
 def _extract_text_step(db: Session, doc, abs_path: Path) -> bool:
     """Extract text from document. Returns True if text was extracted."""
     try:
-        text_content = extract_service.extract_text(abs_path, doc.file_type)
+        text_content = extract_service.extract_text(
+            abs_path, doc.file_type, user_id=doc.user_id, doc_id=doc.id
+        )
         if text_content:
             doc.content_text = text_content
             db.commit()

@@ -186,6 +186,41 @@ async def serve_background(
     )
 
 
+@router.get("/{doc_id}/docx_images/{image_index}")
+async def serve_docx_image(
+    doc_id: int,
+    image_index: int,
+    request: Request,
+    token: Optional[str] = Query(None, description="JWT token for img auth"),
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Serve an extracted DOCX image by index."""
+    user = _resolve_user(token, current_user, db, request)
+
+    doc = db.query(Document).filter(
+        Document.id == doc_id,
+        Document.user_id == user.id,
+    ).first()
+    if not doc:
+        raise AppException(code=4004, message="Document not found", status_code=404)
+
+    abs_path = file_service.get_docx_image_path(user.id, doc_id, image_index)
+    if abs_path is None or not abs_path.exists():
+        raise AppException(code=4004, message="Image not found", status_code=404)
+
+    def file_iter():
+        with open(abs_path, "rb") as f:
+            while chunk := f.read(CHUNK_SIZE):
+                yield chunk
+
+    return StreamingResponse(
+        file_iter(),
+        media_type=_get_mime(abs_path),
+        headers={"Content-Disposition": "inline", "Accept-Ranges": "bytes"},
+    )
+
+
 @router.get("/{doc_id}/thumbnail")
 async def serve_thumbnail(
     doc_id: int,

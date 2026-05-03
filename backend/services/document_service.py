@@ -91,6 +91,8 @@ def delete_document(db: Session, doc_id: int, user_id: int) -> None:
     file_service.delete_file(doc.file_path)
     if doc.thumbnail_path:
         file_service.delete_file(doc.thumbnail_path)
+    if doc.file_type == "docx":
+        file_service.delete_docx_images(doc.user_id, doc.id)
 
     db.delete(doc)
     db.commit()
