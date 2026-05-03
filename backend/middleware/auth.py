@@ -43,6 +43,20 @@ def get_current_user(
     return _authenticate_jwt(token, db, request)
 
 
+def get_current_user_optional(
+    request: Request,
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security),
+    db: Session = Depends(get_db),
+) -> Optional[User]:
+    """Like get_current_user but returns None instead of raising when credentials are missing."""
+    if not credentials:
+        return None
+    token = credentials.credentials
+    if token.startswith("sk-"):
+        return _authenticate_api_key(token, db, request)
+    return _authenticate_jwt(token, db, request)
+
+
 def authenticate_from_token(token: str, db: Session, request: Request = None) -> User:
     """Authenticate from a raw token string (used for query-param auth in file endpoints)."""
     if token.startswith("sk-"):

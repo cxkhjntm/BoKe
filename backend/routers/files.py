@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
-from backend.middleware.auth import get_current_user, authenticate_from_token
+from backend.middleware.auth import get_current_user, get_current_user_optional, authenticate_from_token
 from backend.models.user import User
 from backend.models.document import Document
 from backend.services import file_service
@@ -134,7 +134,7 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
 async def serve_avatar(
     request: Request,
     token: Optional[str] = Query(None, description="JWT token for img auth"),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     user = _resolve_user(token, current_user, db, request)
@@ -162,7 +162,7 @@ async def serve_avatar(
 async def serve_background(
     request: Request,
     token: Optional[str] = Query(None, description="JWT token for img auth"),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     user = _resolve_user(token, current_user, db, request)
