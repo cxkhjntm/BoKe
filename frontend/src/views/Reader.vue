@@ -68,9 +68,9 @@
           <div v-else-if="doc.status === 'ready'" class="empty">暂无内容可显示</div>
         </div>
 
-        <!-- DOCX: show extracted text -->
-        <div v-else-if="doc.file_type === 'docx'" class="text-viewer">
-          <div v-if="doc.status === 'ready' && doc.content_text" class="text-content">{{ doc.content_text }}</div>
+        <!-- DOCX: show extracted text with inline images -->
+        <div v-else-if="doc.file_type === 'docx'" class="docx-viewer">
+          <div v-if="doc.status === 'ready' && renderedDocx" class="docx-content" v-html="renderedDocx"></div>
           <div v-else-if="doc.status === 'ready'" class="empty">未能提取文本内容</div>
         </div>
 
@@ -118,7 +118,7 @@
 <script setup>
 import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocument, getDocuments, retryDocument, fetchFileBlobUrl, revokeBlobUrlFromCache } from '../api'
+import { getDocument, getDocuments, retryDocument, fetchFileBlobUrl, revokeBlobUrlFromCache, getDocxImageUrl } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
@@ -133,6 +133,7 @@ const retrying = ref(false)
 const fileBlobUrl = ref('')
 const fileLoading = ref(false)
 const renderedMd = ref('')
+const renderedDocx = ref('')
 const prevId = ref(null)
 const nextId = ref(null)
 
@@ -146,6 +147,7 @@ function startPolling() {
       const res = await getDocument(route.params.id)
       doc.value = res.data.data
       updateRenderedMd()
+      updateRenderedDocx()
       if (doc.value.status === 'ready' || doc.value.status === 'error') {
         stopPolling()
         if (doc.value.status === 'ready') {
@@ -172,6 +174,63 @@ function updateRenderedMd() {
   } else {
     renderedMd.value = ''
   }
+}
+
+function updateRenderedDocx() {
+  if (doc.value?.file_type === 'docx' && doc.value?.content_text && doc.value?.id) {
+    renderedDocx.value = DOMPurify.sanitize(renderDocxContent(doc.value.content_text, doc.value.id))
+  } else {
+    renderedDocx.value = ''
+  }
+}
+
+function renderDocxContent(text, docId) {
+  // Match both new [image:N] and old [image: data:...;base64,...] formats
+  const regex = /\[image:(?:(\d+)|\s*(data:[^;]+;base64,([A-Za-z0-9+/=\s]+)))\]/g
+  const parts = []
+  let lastIndex = 0
+  let match
+
+  while ((match = regex.exec(text)) !== null) {
+    // Add text before this match
+    if (match.index > lastIndex) {
+      const textSegment = text.slice(lastIndex, match.index).trim()
+      if (textSegment) {
+        parts.push(textSegment.split(/\n\n+/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join(''))
+      }
+    }
+
+    if (match[1] !== undefined) {
+      // New format: [image:N] — served from disk via API
+      const imgIndex = parseInt(match[1], 10)
+      const imgSrc = getDocxImageUrl(docId, imgIndex)
+      parts.push(`<img src="${imgSrc}" alt="文档图片 ${imgIndex}" loading="lazy" />`)
+    } else if (match[2]) {
+      // Old format: [image: data:...;base64,...] — inline base64
+      const src = match[2].replace(/\s/g, '')
+      parts.push(`<img src="${src}" alt="文档图片" loading="lazy" />`)
+    }
+
+    lastIndex = match.index + match[0].length
+  }
+
+  // Add remaining text after last match
+  if (lastIndex < text.length) {
+    const textSegment = text.slice(lastIndex).trim()
+    if (textSegment) {
+      parts.push(textSegment.split(/\n\n+/).map(p => `<p>${escapeHtml(p.trim())}</p>`).join(''))
+    }
+  }
+
+  return parts.join('')
+}
+
+function escapeHtml(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br>')
 }
 
 function revokeBlobUrl() {
@@ -220,6 +279,7 @@ async function fetchDoc() {
     const res = await getDocument(route.params.id)
     doc.value = res.data.data
     updateRenderedMd()
+    updateRenderedDocx()
 
     if (doc.value.status === 'queued' || doc.value.status === 'processing') {
       startPolling()
@@ -257,6 +317,7 @@ async function handleRetry() {
     const res = await retryDocument(route.params.id)
     doc.value = res.data.data
     updateRenderedMd()
+    updateRenderedDocx()
     startPolling()
   } catch (e) {
     error.value = e.response?.data?.message || '重试失败'
@@ -387,6 +448,44 @@ onMounted(fetchDoc)
   font-size: 0.875rem;
   line-height: 1.7;
   color: var(--text);
+}
+
+/* DOCX viewer (text + inline images) */
+.docx-content { line-height: 1.8; font-size: 0.9375rem; }
+.docx-content :deep(p) { margin-bottom: 0.75rem; }
+.docx-content :deep(img) {
+  max-width: 100%;
+  border-radius: var(--radius);
+  display: block;
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--elevation-1);
+  transition: transform var(--transition-glass), box-shadow var(--transition-glass), background var(--transition-glass);
+  cursor: pointer;
+}
+.docx-content :deep(img):hover {
+  transform: translateY(-4px) scale(1.02);
+  box-shadow: var(--elevation-3);
+}
+@supports (backdrop-filter: blur(1px)) {
+  .docx-content :deep(img) {
+    background: rgba(255, 255, 255, 0.35);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    box-shadow: var(--elevation-1), inset 0 1px 0 var(--glass-inset-highlight);
+  }
+  .docx-content :deep(img):hover {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    box-shadow: var(--elevation-3), inset 0 1px 0 var(--glass-inset-highlight-hover);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .docx-content :deep(img) { transition: none; }
+  .docx-content :deep(img):hover { transform: none; }
 }
 
 /* Prev/Next navigation */

@@ -1,3 +1,4 @@
+import shutil
 import uuid
 from pathlib import Path
 
@@ -48,3 +49,46 @@ def get_file_path(relative_path: str) -> Path:
     if not full_path.is_relative_to(STORAGE_PATH.resolve()):
         raise ValueError("Path traversal detected")
     return full_path
+
+
+def save_docx_images(user_id: int, doc_id: int, images: list[tuple[str, bytes]]) -> int:
+    """Save extracted DOCX images to storage/{user_id}/docx_images/{doc_id}/.
+
+    Args:
+        user_id: Owner user ID
+        doc_id: Document ID
+        images: list of (file_extension, binary_data) tuples
+
+    Returns:
+        Number of images saved.
+    """
+    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
+    img_dir.mkdir(parents=True, exist_ok=True)
+    for i, (ext, data) in enumerate(images):
+        filename = f"{i}{ext}"
+        (img_dir / filename).write_bytes(data)
+    logger.info("Saved %d DOCX images for doc_id=%d", len(images), doc_id)
+    return len(images)
+
+
+def delete_docx_images(user_id: int, doc_id: int) -> None:
+    """Delete all extracted images for a DOCX document."""
+    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
+    if img_dir.exists():
+        shutil.rmtree(img_dir)
+        logger.info("Deleted DOCX images for doc_id=%d", doc_id)
+
+
+def get_docx_image_path(user_id: int, doc_id: int, index: int) -> Path | None:
+    """Get the path to a specific extracted DOCX image by index.
+
+    Returns the path if it exists, None otherwise.
+    """
+    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
+    if not img_dir.exists():
+        return None
+    # Find the file matching the index (any extension)
+    for f in sorted(img_dir.iterdir()):
+        if f.stem == str(index) and f.is_file():
+            return f
+    return None

@@ -206,4 +206,13 @@ export function getBackgroundUrl(token) {
   return `/api/v1/files/profile/background?token=${encodeURIComponent(token)}`
 }
 
+/**
+ * Get authenticated URL for a DOCX extracted image.
+ * Uses the cached JWT token from localStorage.
+ */
+export function getDocxImageUrl(docId, imageIndex) {
+  const token = localStorage.getItem('access_token')
+  return `/api/v1/files/${docId}/docx_images/${imageIndex}?token=${encodeURIComponent(token)}`
+}
+
 export default api
