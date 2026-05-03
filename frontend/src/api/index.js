@@ -175,4 +175,35 @@ export const getDashboardTop = (params) =>
 export const getDashboardActivity = (params) =>
   api.get('/dashboard/activity', { params })
 
+// --- Profile ---
+export const getProfile = () =>
+  api.get('/profile')
+
+export const updateProfile = (data) =>
+  api.put('/profile', data)
+
+export const uploadAvatar = (formData) =>
+  api.post('/profile/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+
+export const deleteAvatar = () =>
+  api.delete('/profile/avatar')
+
+export const uploadBackground = (formData) =>
+  api.post('/profile/background', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+
+export const deleteBackground = () =>
+  api.delete('/profile/background')
+
+export function getAvatarUrl(token) {
+  return `/api/v1/files/profile/avatar?token=${encodeURIComponent(token)}`
+}
+
+export function getBackgroundUrl(token) {
+  return `/api/v1/files/profile/background?token=${encodeURIComponent(token)}`
+}
+
 export default api

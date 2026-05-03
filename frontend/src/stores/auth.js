@@ -1,12 +1,25 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { login as apiLogin, logout as apiLogout, refreshToken as apiRefresh, revokeAllBlobUrls } from '../api'
+import { login as apiLogin, logout as apiLogout, refreshToken as apiRefresh, revokeAllBlobUrls, getProfile } from '../api'
 
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(localStorage.getItem('access_token') || '')
   const refreshTokenVal = ref(localStorage.getItem('refresh_token') || '')
+  const userProfile = ref(JSON.parse(localStorage.getItem('user_profile') || 'null'))
 
   const isAuthenticated = computed(() => !!accessToken.value)
+
+  const avatarUrl = computed(() => {
+    if (!userProfile.value?.avatar_path || !accessToken.value) return null
+    return `/api/v1/files/profile/avatar?token=${encodeURIComponent(accessToken.value)}`
+  })
+
+  const backgroundUrl = computed(() => {
+    if (!userProfile.value?.background_path || !accessToken.value) return null
+    return `/api/v1/files/profile/background?token=${encodeURIComponent(accessToken.value)}`
+  })
+
+  const backgroundOpacity = computed(() => userProfile.value?.background_opacity ?? 0.3)
 
   // Sync reactive state when the API interceptor refreshes tokens
   if (typeof window !== 'undefined') {
@@ -23,6 +36,10 @@ export const useAuthStore = defineStore('auth', () => {
     refreshTokenVal.value = data.refresh_token
     localStorage.setItem('access_token', data.access_token)
     localStorage.setItem('refresh_token', data.refresh_token)
+    if (data.user) {
+      userProfile.value = data.user
+      localStorage.setItem('user_profile', JSON.stringify(data.user))
+    }
     return data
   }
 
@@ -37,6 +54,22 @@ export const useAuthStore = defineStore('auth', () => {
     return data
   }
 
+  async function fetchProfile() {
+    try {
+      const res = await getProfile()
+      const profile = res.data.data
+      updateProfileInStore(profile)
+      return profile
+    } catch {
+      return null
+    }
+  }
+
+  function updateProfileInStore(profile) {
+    userProfile.value = profile
+    localStorage.setItem('user_profile', JSON.stringify(profile))
+  }
+
   async function logout() {
     try {
       if (refreshTokenVal.value) {
@@ -47,10 +80,25 @@ export const useAuthStore = defineStore('auth', () => {
     }
     accessToken.value = ''
     refreshTokenVal.value = ''
+    userProfile.value = null
     localStorage.removeItem('access_token')
     localStorage.removeItem('refresh_token')
+    localStorage.removeItem('user_profile')
     revokeAllBlobUrls()
   }
 
-  return { accessToken, refreshToken: refreshTokenVal, isAuthenticated, login, refresh, logout }
+  return {
+    accessToken,
+    refreshToken: refreshTokenVal,
+    isAuthenticated,
+    userProfile,
+    avatarUrl,
+    backgroundUrl,
+    backgroundOpacity,
+    login,
+    refresh,
+    logout,
+    fetchProfile,
+    updateProfileInStore,
+  }
 })
