@@ -12,26 +12,21 @@
           <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">我的收藏</router-link>
         </nav>
         <SearchBar />
-        <button class="btn btn-sm" @click="handleLogout">退出登录</button>
+        <SettingsDropdown @open-settings="settingsOpen = true" />
       </div>
     </div>
   </nav>
+  <SettingsModal v-if="settingsOpen" @close="settingsOpen = false" />
 </template>
 
 <script setup>
 import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '../stores/auth'
 import SearchBar from './SearchBar.vue'
+import SettingsDropdown from './SettingsDropdown.vue'
+import SettingsModal from './SettingsModal.vue'
 
-const router = useRouter()
-const authStore = useAuthStore()
 const mobileOpen = ref(false)
-
-async function handleLogout() {
-  await authStore.logout()
-  router.push('/login')
-}
+const settingsOpen = ref(false)
 </script>
 
 <style scoped>
