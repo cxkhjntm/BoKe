@@ -15,6 +15,11 @@ class TestLogin:
         assert "access_token" in data["data"]
         assert "refresh_token" in data["data"]
         assert data["data"]["token_type"] == "bearer"
+        assert "user" in data["data"]
+        assert data["data"]["user"]["username"] == "testadmin"
+        assert data["data"]["user"]["avatar_path"] is None
+        assert data["data"]["user"]["background_path"] is None
+        assert data["data"]["user"]["background_opacity"] == 0.3
 
     def test_invalid_password(self, client, admin_user):
         response = client.post(
