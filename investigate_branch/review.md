@@ -1,61 +1,76 @@
-# Design Review: Avatar Display Fix
+# Design Review: DOCX Image Extraction Fix
 
-**Date:** 2026-05-03
-**Reviewer:** team-lead
-**Verdict:** APPROVE (Proposal A)
+**Date**: 2026-05-03
+**Reviewer**: Agent (Reviewer Role)
+**Verdict**: **APPROVE WITH MINOR NOTES**
 
 ---
 
-## 1. Diagnosis Verification
+## 1. Diagnosis Report Review
 
-Verified against source code:
+### Completeness: PASS
+- Root cause clearly identified across both backend and frontend layers
+- Call chain documented with exact file/line references
+- Evidence includes actual code snippets
+- Impact assessment is accurate
 
-- `backend/middleware/auth.py:34-39` — `get_current_user` raises 401 on missing credentials. CONFIRMED.
-- `backend/routers/files.py:137,165` — `Depends(get_current_user)` blocks before `_resolve_user` runs. CONFIRMED.
-- `frontend/src/stores/auth.js:14,19` — Token correctly passed as query param. CONFIRMED.
-- `_resolve_user` at `files.py:36-47` — Correctly handles None current_user with token fallback. CONFIRMED.
+### Accuracy: PASS
+- Confirmed: `extract_service.py:79` does use `[image: data:{ct};base64,{b64}]` format
+- Confirmed: `Reader.vue:73` uses `{{ doc.content_text }}` (plain text interpolation)
+- Confirmed: No image serving endpoint exists in `files.py`
+- Confirmed: `content_text` is a single Text column with no structured data
 
-Root cause is accurate and well-evidenced.
+### Minor Note
+- The diagnosis correctly identifies the problem but could note that `inline_shapes` only captures inline images. Floating/anchored images (via `doc.inline_shapes` vs drawing ML) may not be captured. This is a pre-existing limitation, not introduced by this fix.
 
 ---
 
 ## 2. Fix Proposal Review
 
-### Proposal A (RECOMMENDED) — `get_current_user_optional`
+### Architecture: PASS
+- Clean three-layer separation (extract → serve → render)
+- Index-based marker format `[image:N]` is simple, unambiguous, and parseable
+- Follows existing patterns (auth via query param for `<img>` tags, same as thumbnail endpoint)
+- No DB schema change needed — `content_text` column reused with different content format
 
-**Security:** PASS
-- `get_current_user` untouched — no existing endpoint weakened
-- New dependency delegates to same `_authenticate_jwt` / `_authenticate_api_key` functions
-- `_resolve_user` still raises 401 if both auth methods fail
-- Token-in-query-param is an accepted tradeoff (already the established pattern)
+### Security: PASS
+- Auth required on image serving endpoint (JWT + ownership check)
+- Index-based lookup prevents path traversal (no user-controlled filenames)
+- DOMPurify sanitization on frontend (existing pattern from Markdown rendering)
+- No new attack surface introduced
 
-**Correctness:** PASS
-- FastAPI dependency injection will call `get_current_user_optional` → returns None when no header
-- `_resolve_user` receives None → falls back to query-param token → authenticates
-- Existing endpoints keep strict auth via `get_current_user`
+### Resource Analysis: PASS
+- Storage: significant DB reduction, modest disk increase — net positive
+- CPU: negligible change
+- Memory: improvement for image-heavy docs (no more base64 in DOM)
+- Network: document API response shrinks dramatically; separate image requests add overhead but are standard web behavior
 
-**Rollback:** PASS
-- Revert 1 commit; no DB migration, no config change
+### Backward Compatibility: PASS (with note)
+- Option C (frontend dual-format) is the right call — zero migration burden
+- Old documents degrade gracefully (base64 text still visible, just not rendered as images)
+- Users can re-upload to get the improved behavior
 
-**Resource Assessment:** Reasonable
-- CPU/Memory/Storage: zero impact (same logic path)
-- Dev time: ~15 min (accurate)
-- Risk: Very Low (accurate)
-
-### Proposal B — REJECTED (agree)
-Changing core dependency contract is too risky. Any missed caller becomes unauthenticated.
-
-### Proposal C — REJECTED (agree)
-Unnecessary code duplication. `HTTPBearer` already handles header extraction.
-
----
-
-## 3. Issues Found
-
-None. The fix is minimal, safe, and correct.
+### Rollback Safety: PASS
+- Pure code change, no DB migration
+- `git revert` cleanly undoes everything
+- Old documents unaffected (their content_text still has base64 markers)
 
 ---
 
-## 4. Conditions
+## 3. Potential Issues to Watch
 
-None. Ready for implementation.
+1. **Image ordering assumption**: The proposal assumes images are extracted in document order. The current `_extract_docx()` iterates `doc.inline_shapes` which may not perfectly match visual order in complex layouts. This is acceptable for v1 but worth noting.
+
+2. **Large image count**: A DOCX with 100+ images would create 100+ HTTP requests on the frontend. Consider lazy loading (`loading="lazy"`) on `<img>` tags.
+
+3. **Disk cleanup**: The `delete_docx_images()` function uses `shutil.rmtree()`. Ensure this is called in all document deletion paths (manual delete, admin delete, cascade).
+
+4. **Existing test**: `tests/test_extract.py` likely tests the old base64 marker format. Tests will need updating.
+
+---
+
+## 4. Verdict
+
+**APPROVE** — The diagnosis is complete and accurate. The fix proposal is well-architected, secure, and minimally invasive. No blocking issues found. The minor notes above are informational and do not require changes to the proposal.
+
+Proceed to implementation.
