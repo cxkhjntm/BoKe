@@ -3,7 +3,7 @@
     <template v-if="authStore.backgroundUrls.length > 0">
       <div
         v-for="(url, idx) in authStore.backgroundUrls"
-        :key="idx"
+        :key="url"
         class="user-bg"
         :style="bgLayerStyle(idx)"
       ></div>
@@ -62,9 +62,13 @@ function stopCarousel() {
 }
 
 watch(() => authStore.carouselInterval, startCarousel)
-watch(() => authStore.backgroundUrls, () => {
-  if (activeIndex.value >= authStore.backgroundUrls.length) {
-    activeIndex.value = 0
+watch(() => authStore.backgroundUrls, (newUrls, oldUrls) => {
+  const oldLen = oldUrls ? oldUrls.length : 0
+  const newLen = newUrls.length
+  if (oldLen > 0 && newLen > oldLen) {
+    activeIndex.value = newLen - 1
+  } else if (activeIndex.value >= newLen) {
+    activeIndex.value = Math.max(0, newLen - 1)
   }
   startCarousel()
 })
