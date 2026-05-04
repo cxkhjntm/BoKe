@@ -55,7 +55,6 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
 
     doc = Document(str(file_path))
 
-    # Build a map of image rId -> (extension_bytes, binary_data)
     _CT_EXT_MAP = {
         "image/png": ".png",
         "image/jpeg": ".jpg",
@@ -77,53 +76,75 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
                 logger.warning("Failed to extract image from rel %s: %s", rel.rId, e)
                 continue
 
-    # Extract text and images by traversing paragraph XML directly.
-    # This ensures images are placed at their exact original position
-    # within each paragraph, not in a separate flat iteration.
     result_parts = []
     extracted_images = []  # list of (extension, bytes) in document order
-    seen_rids = set()  # Track which rIds we've already extracted
+    seen_rids = set()
 
-    for para in doc.paragraphs:
-        # Find all inline images (w:drawing > a:blip) in this paragraph
-        # This includes both inline images (wp:inline) and anchored images (wp:anchor)
-        para_images = []
-        for drawing in para._element.findall('.//' + qn('w:drawing')):
+    def _is_in_fallback(element):
+        """Check if element is inside mc:Fallback."""
+        parent = element.getparent()
+        while parent is not None:
+            tag = parent.tag.split('}')[-1] if '}' in parent.tag else parent.tag
+            if tag == 'Fallback':
+                return True
+            parent = parent.getparent()
+        return False
+
+    def _extract_images_from_element(element):
+        """Extract images from XML element, skipping mc:Fallback images."""
+        images = []
+        for drawing in element.findall('.//' + qn('w:drawing')):
+            if _is_in_fallback(drawing):
+                continue
             for blip in drawing.findall('.//' + qn('a:blip')):
                 embed = blip.get(qn('r:embed'))
                 if embed and embed in image_map and embed not in seen_rids:
-                    para_images.append(embed)
+                    images.append(embed)
                     seen_rids.add(embed)
+        return images
+
+    def _get_paragraph_text(para_element):
+        """Get text content from paragraph element."""
+        text_parts = []
+        for run in para_element.findall(qn('w:r')):
+            for t in run.findall(qn('w:t')):
+                if t.text:
+                    text_parts.append(t.text)
+        return ''.join(text_parts)
+
+    def _process_paragraph(para_element):
+        """Process a single paragraph, extracting text and images."""
+        text = _get_paragraph_text(para_element)
+        para_images = _extract_images_from_element(para_element)
 
         if para_images:
-            # Paragraph has images: interleave text and image markers
-            # For simplicity, place all images after the paragraph text
-            # (preserving the paragraph they belong to)
-            if para.text.strip():
-                result_parts.append(para.text)
+            if text.strip():
+                result_parts.append(text)
             for rId in para_images:
                 img_index = len(extracted_images)
                 extracted_images.append(image_map[rId])
                 result_parts.append(f"[image:{img_index}]")
         else:
-            # Text-only paragraph
-            if para.text.strip():
-                result_parts.append(para.text)
+            if text.strip():
+                result_parts.append(text)
 
-    # Second pass: Find any anchored images that exist outside paragraphs
-    # (at the body level, not inside any w:p element)
-    # These are floating/wrapped images that python-docx paragraphs don't capture
-    body = doc.element.body
-    for drawing in body.findall('.//' + qn('w:drawing')):
-        for blip in drawing.findall('.//' + qn('a:blip')):
-            embed = blip.get(qn('r:embed'))
-            if embed and embed in image_map and embed not in seen_rids:
-                # This is an anchored image outside any paragraph
-                img_index = len(extracted_images)
-                extracted_images.append(image_map[embed])
-                result_parts.append(f"[image:{img_index}]")
-                seen_rids.add(embed)
-                logger.info("Found anchored image outside paragraph: rId=%s", embed)
+    def _process_table(table_element):
+        """Recursively process all paragraphs in a table."""
+        for row in table_element.findall(qn('w:tr')):
+            for cell in row.findall(qn('w:tc')):
+                for para in cell.findall(qn('w:p')):
+                    _process_paragraph(para)
+                for nested_tbl in cell.findall(qn('w:tbl')):
+                    _process_table(nested_tbl)
+
+    # Traverse w:body children in document order
+    for child in doc.element.body:
+        tag = child.tag.split('}')[-1] if '}' in child.tag else child.tag
+
+        if tag == 'p':
+            _process_paragraph(child)
+        elif tag == 'tbl':
+            _process_table(child)
 
     # Save extracted images to disk if user_id and doc_id are provided
     if extracted_images and user_id is not None and doc_id is not None:

@@ -187,7 +187,11 @@ function updateRenderedMd() {
 
 function updateRenderedDocx() {
   if (doc.value?.file_type === 'docx' && doc.value?.content_text && doc.value?.id) {
-    renderedDocx.value = DOMPurify.sanitize(renderDocxContent(doc.value.content_text, doc.value.id))
+    const html = renderDocxContent(doc.value.content_text, doc.value.id)
+    renderedDocx.value = DOMPurify.sanitize(html, {
+      ADD_TAGS: ['img'],
+      ADD_ATTR: ['src', 'alt', 'loading', 'onerror'],
+    })
   } else {
     renderedDocx.value = ''
   }
@@ -213,11 +217,11 @@ function renderDocxContent(text, docId) {
       // New format: [image:N] — served from disk via API
       const imgIndex = parseInt(match[1], 10)
       const imgSrc = getDocxImageUrl(docId, imgIndex)
-      parts.push(`<img src="${imgSrc}" alt="文档图片 ${imgIndex}" loading="lazy" />`)
+      parts.push(`<img src="${imgSrc}" alt="文档图片 ${imgIndex}" loading="lazy" onerror="this.onerror=null;this.alt='图片加载失败';this.style.opacity='0.5'" />`)
     } else if (match[2]) {
       // Old format: [image: data:...;base64,...] — inline base64
       const src = match[2].replace(/\s/g, '')
-      parts.push(`<img src="${src}" alt="文档图片" loading="lazy" />`)
+      parts.push(`<img src="${src}" alt="文档图片" loading="lazy" onerror="this.onerror=null;this.alt='图片加载失败';this.style.opacity='0.5'" />`)
     }
 
     lastIndex = match.index + match[0].length
