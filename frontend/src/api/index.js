@@ -96,7 +96,8 @@ export async function fetchFileBlobUrl(docId, type = 'original') {
   const cacheKey = `${docId}:${type}`
   if (blobCache.has(cacheKey)) return blobCache.get(cacheKey)
 
-  const res = await api.get(`/files/${docId}/${type}`, { responseType: 'blob' })
+  // Append a cache-buster query (?_t=...) to avoid browser disk cache returning a 0-byte Blob for XHR blob response
+  const res = await api.get(`/files/${docId}/${type}?_t=${Date.now()}`, { responseType: 'blob' })
   const url = URL.createObjectURL(res.data)
   blobCache.set(cacheKey, url)
   return url
@@ -214,8 +215,9 @@ export function getBackgroundUrl(token) {
  * Uses the cached JWT token from localStorage.
  */
 export function getDocxImageUrl(docId, imageIndex) {
-  const token = localStorage.getItem('access_token')
-  return `/api/v1/files/${docId}/docx_images/${imageIndex}?token=${encodeURIComponent(token)}`
+  const token = localStorage.getItem('access_token') || ''
+  const baseUrl = api.defaults.baseURL || '/api/v1'
+  return `${baseUrl}/files/${docId}/docx_images/${imageIndex}?token=${encodeURIComponent(token)}`
 }
 
 export default api

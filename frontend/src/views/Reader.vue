@@ -145,6 +145,7 @@ const renderedMd = ref('')
 const renderedDocx = ref('')
 const prevId = ref(null)
 const nextId = ref(null)
+const currentBlobDocId = ref(null)
 
 // Status polling
 let pollTimer = null
@@ -248,9 +249,10 @@ function escapeHtml(str) {
 
 function revokeBlobUrl() {
   if (fileBlobUrl.value) {
-    URL.revokeObjectURL(fileBlobUrl.value)
-    // Also remove from the global blob cache to prevent returning a revoked URL
-    revokeBlobUrlFromCache(route.params.id, 'original')
+    if (currentBlobDocId.value) {
+      revokeBlobUrlFromCache(currentBlobDocId.value, 'original')
+      currentBlobDocId.value = null
+    }
     fileBlobUrl.value = ''
   }
 }
@@ -263,6 +265,7 @@ async function loadFileBlob() {
   try {
     revokeBlobUrl()
     fileBlobUrl.value = await fetchFileBlobUrl(route.params.id, 'original')
+    currentBlobDocId.value = route.params.id
   } catch {
     // Blob load failed — user can still use "Open Original"
   } finally {

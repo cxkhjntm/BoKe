@@ -29,6 +29,12 @@ def _content_disposition(filename: str) -> str:
 
 
 def _get_mime(file_path: Path) -> str:
+    ext = file_path.suffix.lower()
+    if ext == ".png": return "image/png"
+    if ext in (".jpg", ".jpeg"): return "image/jpeg"
+    if ext == ".gif": return "image/gif"
+    if ext == ".webp": return "image/webp"
+    
     mime, _ = mimetypes.guess_type(str(file_path))
     return mime or "application/octet-stream"
 
@@ -52,7 +58,7 @@ async def serve_original(
     doc_id: int,
     request: Request,
     token: Optional[str] = Query(None, description="JWT token for img/iframe auth"),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     user = _resolve_user(token, current_user, db, request)
@@ -88,6 +94,7 @@ async def serve_original(
             "Content-Disposition": _content_disposition(doc.original_filename),
             "Accept-Ranges": "bytes",
             "Content-Length": str(file_size),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
         },
     )
 
@@ -126,6 +133,7 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
             "Accept-Ranges": "bytes",
             "Content-Range": f"bytes {start}-{end}/{file_size}",
             "Content-Length": str(content_length),
+            "Cache-Control": "no-store, no-cache, must-revalidate",
         },
     )
 
@@ -192,7 +200,7 @@ async def serve_docx_image(
     image_index: int,
     request: Request,
     token: Optional[str] = Query(None, description="JWT token for img auth"),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     """Serve an extracted DOCX image by index."""
@@ -226,7 +234,7 @@ async def serve_thumbnail(
     doc_id: int,
     request: Request,
     token: Optional[str] = Query(None, description="JWT token for img auth"),
-    current_user: Optional[User] = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: Session = Depends(get_db),
 ):
     user = _resolve_user(token, current_user, db, request)

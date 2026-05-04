@@ -41,3 +41,13 @@ frontend/dist/
 # Logs
 *.log
 logs/
+
+#windows
+run.ps1
+
+# Test artifacts (本地测试生成物)
+.coverage
+test_storage/
+test_dompurify.js
+# 所有测试临时脚本
+test_*.js
