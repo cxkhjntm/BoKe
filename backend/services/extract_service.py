@@ -82,15 +82,18 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
     # within each paragraph, not in a separate flat iteration.
     result_parts = []
     extracted_images = []  # list of (extension, bytes) in document order
+    seen_rids = set()  # Track which rIds we've already extracted
 
     for para in doc.paragraphs:
         # Find all inline images (w:drawing > a:blip) in this paragraph
+        # This includes both inline images (wp:inline) and anchored images (wp:anchor)
         para_images = []
         for drawing in para._element.findall('.//' + qn('w:drawing')):
             for blip in drawing.findall('.//' + qn('a:blip')):
                 embed = blip.get(qn('r:embed'))
-                if embed and embed in image_map:
+                if embed and embed in image_map and embed not in seen_rids:
                     para_images.append(embed)
+                    seen_rids.add(embed)
 
         if para_images:
             # Paragraph has images: interleave text and image markers
@@ -106,6 +109,21 @@ def _extract_docx(file_path: Path, user_id: int | None = None, doc_id: int | Non
             # Text-only paragraph
             if para.text.strip():
                 result_parts.append(para.text)
+
+    # Second pass: Find any anchored images that exist outside paragraphs
+    # (at the body level, not inside any w:p element)
+    # These are floating/wrapped images that python-docx paragraphs don't capture
+    body = doc.element.body
+    for drawing in body.findall('.//' + qn('w:drawing')):
+        for blip in drawing.findall('.//' + qn('a:blip')):
+            embed = blip.get(qn('r:embed'))
+            if embed and embed in image_map and embed not in seen_rids:
+                # This is an anchored image outside any paragraph
+                img_index = len(extracted_images)
+                extracted_images.append(image_map[embed])
+                result_parts.append(f"[image:{img_index}]")
+                seen_rids.add(embed)
+                logger.info("Found anchored image outside paragraph: rId=%s", embed)
 
     # Save extracted images to disk if user_id and doc_id are provided
     if extracted_images and user_id is not None and doc_id is not None:

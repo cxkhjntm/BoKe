@@ -88,7 +88,8 @@ def get_docx_image_path(user_id: int, doc_id: int, index: int) -> Path | None:
     if not img_dir.exists():
         return None
     # Find the file matching the index (any extension)
-    for f in sorted(img_dir.iterdir()):
+    # Sort numerically by stem (index number) to handle 10+ images correctly
+    for f in sorted(img_dir.iterdir(), key=lambda p: int(p.stem) if p.stem.isdigit() else 0):
         if f.stem == str(index) and f.is_file():
             return f
     return None
