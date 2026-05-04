@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float
+from sqlalchemy.orm import relationship
 
 from backend.database import Base
 
@@ -20,3 +21,5 @@ class User(Base):
     background_opacity = Column(Float, default=0.3)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    carousel_interval = Column(Integer, default=5)
+    backgrounds = relationship("UserBackground", back_populates="user", cascade="all, delete-orphan", order_by="UserBackground.position")

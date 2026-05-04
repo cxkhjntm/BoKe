@@ -12,6 +12,7 @@
         </div>
 
         <div class="modal-body">
+          <!-- Avatar section (unchanged) -->
           <div class="section">
             <label class="form-label">个人头像</label>
             <div class="avatar-area">
@@ -29,23 +30,63 @@
             </div>
           </div>
 
+          <!-- Multi-background section -->
           <div class="section">
-            <label class="form-label">背景图片</label>
-            <div class="bg-area">
-              <div class="bg-preview" :style="bgPreviewStyle">
-                <span v-if="!bgPreview" class="bg-placeholder">无背景图</span>
+            <label class="form-label">背景图片（最多10张，自动轮播）</label>
+            <div class="bg-grid">
+              <div
+                v-for="bg in backgrounds"
+                :key="bg.id"
+                class="bg-thumb"
+              >
+                <div class="bg-thumb-img" :style="bgThumbStyle(bg)"></div>
+                <button class="bg-thumb-delete" @click="removeBackground(bg.id)" title="删除">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
               </div>
-              <div class="bg-actions">
-                <button class="btn btn-sm" @click="bgInput.click()">上传背景</button>
-                <button v-if="authStore.userProfile?.background_path" class="btn btn-sm btn-danger" @click="removeBackground">移除</button>
-              </div>
-              <input ref="bgInput" type="file" accept="image/*" class="hidden-input" @change="onBgSelect" />
+              <button
+                v-if="backgrounds.length < 10"
+                class="bg-add"
+                @click="bgInput.click()"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                <span>添加</span>
+              </button>
             </div>
+            <input ref="bgInput" type="file" accept="image/*" class="hidden-input" @change="onBgUpload" />
+            <p v-if="backgrounds.length === 0" class="bg-empty">暂无背景图</p>
+          </div>
 
-            <div class="opacity-section">
-              <label class="form-label">背景透明度: {{ opacity.toFixed(2) }}</label>
-              <input type="range" class="opacity-slider" min="0" max="1" step="0.01" v-model.number="opacity" @input="onOpacityChange" />
-            </div>
+          <!-- Carousel interval -->
+          <div class="section" v-if="backgrounds.length > 1">
+            <label class="form-label">轮播间隔: {{ interval }}秒</label>
+            <input
+              type="range"
+              class="slider"
+              min="1"
+              max="60"
+              step="1"
+              v-model.number="interval"
+              @input="onIntervalChange"
+            />
+          </div>
+
+          <!-- Opacity -->
+          <div class="section">
+            <label class="form-label">背景透明度: {{ opacity.toFixed(2) }}</label>
+            <input
+              type="range"
+              class="slider"
+              min="0"
+              max="1"
+              step="0.01"
+              v-model.number="opacity"
+              @input="onOpacityChange"
+            />
           </div>
         </div>
       </div>
@@ -56,7 +97,11 @@
 <script setup>
 import { ref, computed, onUnmounted } from 'vue'
 import { useAuthStore } from '../stores/auth'
-import { uploadAvatar, deleteAvatar, uploadBackground, deleteBackground, updateProfile } from '../api'
+import {
+  uploadAvatar, deleteAvatar,
+  uploadBackgroundMulti, deleteBackgroundMulti,
+  updateProfile, getBackgroundUrlById,
+} from '../api'
 
 const emit = defineEmits(['close'])
 const authStore = useAuthStore()
@@ -64,19 +109,20 @@ const authStore = useAuthStore()
 const avatarInput = ref(null)
 const bgInput = ref(null)
 const avatarPreview = ref(authStore.avatarUrl)
-const bgPreview = ref(authStore.backgroundUrl)
+const backgrounds = ref([...authStore.backgrounds])
 const opacity = ref(authStore.backgroundOpacity)
+const interval = ref(authStore.carouselInterval)
 
-let opacityTimer = null
+let saveTimer = null
 
-const bgPreviewStyle = computed(() => {
-  if (!bgPreview.value) return {}
+function bgThumbStyle(bg) {
+  const url = getBackgroundUrlById(bg.id, authStore.accessToken)
   return {
-    backgroundImage: `url(${bgPreview.value})`,
+    backgroundImage: `url(${url})`,
     backgroundSize: 'cover',
     backgroundPosition: 'center',
   }
-})
+}
 
 async function onAvatarSelect(e) {
   const file = e.target.files?.[0]
@@ -104,35 +150,47 @@ async function removeAvatar() {
   }
 }
 
-async function onBgSelect(e) {
+async function onBgUpload(e) {
   const file = e.target.files?.[0]
   if (!file) return
   const formData = new FormData()
   formData.append('file', file)
   try {
-    const res = await uploadBackground(formData)
-    const profile = res.data.data
-    authStore.updateProfileInStore(profile)
-    bgPreview.value = authStore.backgroundUrl
+    await uploadBackgroundMulti(formData)
+    await authStore.fetchBackgrounds()
+    backgrounds.value = [...authStore.backgrounds]
+  } catch {
+    // error handled by interceptor
+  }
+  // Reset input so same file can be re-selected
+  e.target.value = ''
+}
+
+async function removeBackground(bgId) {
+  try {
+    await deleteBackgroundMulti(bgId)
+    await authStore.fetchBackgrounds()
+    backgrounds.value = [...authStore.backgrounds]
   } catch {
     // error handled by interceptor
   }
 }
 
-async function removeBackground() {
-  try {
-    const res = await deleteBackground()
-    const profile = res.data.data
-    authStore.updateProfileInStore(profile)
-    bgPreview.value = null
-  } catch {
-    // error handled by interceptor
-  }
+function onIntervalChange() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    try {
+      const res = await updateProfile({ carousel_interval: interval.value })
+      authStore.updateProfileInStore(res.data.data)
+    } catch {
+      // error handled by interceptor
+    }
+  }, 300)
 }
 
 function onOpacityChange() {
-  clearTimeout(opacityTimer)
-  opacityTimer = setTimeout(async () => {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
     try {
       const res = await updateProfile({ background_opacity: opacity.value })
       authStore.updateProfileInStore(res.data.data)
@@ -142,7 +200,7 @@ function onOpacityChange() {
   }, 300)
 }
 
-onUnmounted(() => clearTimeout(opacityTimer))
+onUnmounted(() => clearTimeout(saveTimer))
 </script>
 
 <style scoped>
@@ -209,10 +267,17 @@ onUnmounted(() => clearTimeout(opacityTimer))
   gap: 0.5rem;
 }
 
+.form-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .hidden-input {
   display: none;
 }
 
+/* Avatar */
 .avatar-area {
   display: flex;
   align-items: center;
@@ -250,38 +315,89 @@ onUnmounted(() => clearTimeout(opacityTimer))
   gap: 0.375rem;
 }
 
-.bg-area {
-  display: flex;
-  flex-direction: column;
+/* Background grid */
+.bg-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5rem, 1fr));
   gap: 0.5rem;
 }
 
-.bg-preview {
+.bg-thumb {
+  position: relative;
   width: 100%;
-  height: 6rem;
+  aspect-ratio: 16 / 10;
   border-radius: var(--radius);
+  overflow: hidden;
   border: 1px solid var(--border);
-  background: var(--bg);
+}
+
+.bg-thumb-img {
+  width: 100%;
+  height: 100%;
+}
+
+.bg-thumb-delete {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.6);
+  border: none;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 
-.bg-placeholder {
+.bg-thumb:hover .bg-thumb-delete {
+  opacity: 1;
+}
+
+.bg-thumb-delete svg {
+  width: 0.75rem;
+  height: 0.75rem;
+  color: white;
+}
+
+.bg-add {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: var(--radius);
+  border: 2px dashed var(--border);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  transition: border-color var(--transition-fast), color var(--transition-fast);
+}
+
+.bg-add:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.bg-add svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.bg-empty {
   font-size: 0.8125rem;
   color: var(--text-secondary);
+  margin: 0;
 }
 
-.bg-actions {
-  display: flex;
-  gap: 0.5rem;
-}
-
-.opacity-section {
-  margin-top: 0.5rem;
-}
-
-.opacity-slider {
+/* Sliders */
+.slider {
   width: 100%;
   height: 0.375rem;
   appearance: none;
@@ -292,7 +408,7 @@ onUnmounted(() => clearTimeout(opacityTimer))
   cursor: pointer;
 }
 
-.opacity-slider::-webkit-slider-thumb {
+.slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 1rem;
   height: 1rem;
@@ -301,7 +417,7 @@ onUnmounted(() => clearTimeout(opacityTimer))
   cursor: pointer;
 }
 
-.opacity-slider::-moz-range-thumb {
+.slider::-moz-range-thumb {
   width: 1rem;
   height: 1rem;
   border-radius: 50%;

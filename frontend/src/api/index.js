@@ -202,6 +202,25 @@ export const uploadBackground = (formData) =>
 export const deleteBackground = () =>
   api.delete('/profile/background')
 
+// --- Multi-backgrounds ---
+export const getBackgrounds = () =>
+  api.get('/profile/backgrounds')
+
+export const uploadBackgroundMulti = (formData) =>
+  api.post('/profile/backgrounds', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
+
+export const deleteBackgroundMulti = (id) =>
+  api.delete(`/profile/backgrounds/${id}`)
+
+export const reorderBackgrounds = (backgroundIds) =>
+  api.put('/profile/backgrounds/reorder', { background_ids: backgroundIds })
+
+export function getBackgroundUrlById(bgId, token) {
+  return `/api/v1/files/profile/backgrounds/${bgId}?token=${encodeURIComponent(token)}`
+}
+
 export function getAvatarUrl(token) {
   return `/api/v1/files/profile/avatar?token=${encodeURIComponent(token)}`
 }

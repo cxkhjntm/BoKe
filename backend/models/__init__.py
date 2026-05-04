@@ -3,5 +3,6 @@ from backend.models.document import Document
 from backend.models.api_key import APIKey
 from backend.models.refresh_token import RefreshToken
 from backend.models.activity import ActivityLog
+from backend.models.user_background import UserBackground
 
-__all__ = ["User", "Document", "APIKey", "RefreshToken", "ActivityLog"]
+__all__ = ["User", "Document", "APIKey", "RefreshToken", "ActivityLog", "UserBackground"]

@@ -9,7 +9,8 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.middleware.auth import get_current_user
 from backend.models.user import User
-from backend.schemas.user import ProfileOut, ProfileUpdate
+from backend.models.user_background import UserBackground
+from backend.schemas.user import ProfileOut, ProfileUpdate, BackgroundOut, BackgroundReorder
 from backend.services import file_service
 from backend.config import IMAGE_MAX_UPLOAD_SIZE_BYTES, IMAGE_ALLOWED_EXTENSIONS
 from backend.utils.response import ok
@@ -26,6 +27,8 @@ IMAGE_MIME_WHITELIST = {
     "webp": ["image/webp"],
     "gif": ["image/gif"],
 }
+
+MAX_BACKGROUNDS = 10
 
 
 def _validate_image(file: UploadFile, content: bytes) -> str:
@@ -75,7 +78,10 @@ def update_profile(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    current_user.background_opacity = body.background_opacity
+    if body.background_opacity is not None:
+        current_user.background_opacity = body.background_opacity
+    if body.carousel_interval is not None:
+        current_user.carousel_interval = body.carousel_interval
     db.commit()
     db.refresh(current_user)
     return ok(data=ProfileOut.model_validate(current_user).model_dump())
@@ -139,3 +145,89 @@ def delete_background(
     db.commit()
     db.refresh(current_user)
     return ok(data=ProfileOut.model_validate(current_user).model_dump())
+
+
+@router.get("/backgrounds")
+def list_backgrounds(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    bgs = db.query(UserBackground).filter(
+        UserBackground.user_id == current_user.id
+    ).order_by(UserBackground.position).all()
+    return ok(data=[BackgroundOut.model_validate(bg).model_dump() for bg in bgs])
+
+
+@router.post("/backgrounds")
+def upload_background_multi(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    count = db.query(UserBackground).filter(UserBackground.user_id == current_user.id).count()
+    if count >= MAX_BACKGROUNDS:
+        raise AppException(code=4000, message=f"Maximum {MAX_BACKGROUNDS} backgrounds allowed", status_code=400)
+
+    content = file.file.read()
+    _validate_image(file, content)
+
+    relative_path = file_service.save_file(current_user.id, file.filename, content, "profile")
+
+    bg = UserBackground(
+        user_id=current_user.id,
+        image_path=relative_path,
+        position=count,
+    )
+    db.add(bg)
+    db.commit()
+    db.refresh(bg)
+    return ok(data=BackgroundOut.model_validate(bg).model_dump())
+
+
+@router.delete("/backgrounds/{bg_id}")
+def delete_background_multi(
+    bg_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    bg = db.query(UserBackground).filter(
+        UserBackground.id == bg_id,
+        UserBackground.user_id == current_user.id,
+    ).first()
+    if not bg:
+        raise AppException(code=4004, message="Background not found", status_code=404)
+
+    file_service.delete_file(bg.image_path)
+    db.delete(bg)
+    db.flush()
+
+    remaining = db.query(UserBackground).filter(
+        UserBackground.user_id == current_user.id
+    ).order_by(UserBackground.position).all()
+    for i, item in enumerate(remaining):
+        item.position = i
+
+    db.commit()
+    return ok(data=None)
+
+
+@router.put("/backgrounds/reorder")
+def reorder_backgrounds(
+    body: BackgroundReorder,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    bgs = db.query(UserBackground).filter(
+        UserBackground.user_id == current_user.id,
+        UserBackground.id.in_(body.background_ids),
+    ).all()
+
+    if len(bgs) != len(body.background_ids):
+        raise AppException(code=4000, message="One or more invalid background IDs", status_code=400)
+
+    bg_map = {bg.id: bg for bg in bgs}
+    for pos, bg_id in enumerate(body.background_ids):
+        bg_map[bg_id].position = pos
+
+    db.commit()
+    return ok(data=None)

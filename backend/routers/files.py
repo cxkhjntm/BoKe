@@ -11,6 +11,7 @@ from backend.database import get_db
 from backend.middleware.auth import get_current_user, get_current_user_optional, authenticate_from_token
 from backend.models.user import User
 from backend.models.document import Document
+from backend.models.user_background import UserBackground
 from backend.services import file_service
 from backend.utils.logger import get_logger
 from backend.exceptions.handlers import AppException
@@ -181,6 +182,39 @@ async def serve_background(
     abs_path = file_service.get_file_path(user.background_path)
     if not abs_path.exists():
         raise AppException(code=4004, message="Background not found on disk", status_code=404)
+
+    def file_iter():
+        with open(abs_path, "rb") as f:
+            while chunk := f.read(CHUNK_SIZE):
+                yield chunk
+
+    return StreamingResponse(
+        file_iter(),
+        media_type=_get_mime(abs_path),
+        headers={"Content-Disposition": "inline", "Accept-Ranges": "bytes"},
+    )
+
+
+@router.get("/profile/backgrounds/{bg_id}")
+async def serve_background_by_id(
+    bg_id: int,
+    request: Request,
+    token: Optional[str] = Query(None, description="JWT token for img auth"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    user = _resolve_user(token, current_user, db, request)
+
+    bg = db.query(UserBackground).filter(
+        UserBackground.id == bg_id,
+        UserBackground.user_id == user.id,
+    ).first()
+    if not bg:
+        raise AppException(code=4004, message="Background not found", status_code=404)
+
+    abs_path = file_service.get_file_path(bg.image_path)
+    if not abs_path.exists():
+        raise AppException(code=4004, message="Background file not found on disk", status_code=404)
 
     def file_iter():
         with open(abs_path, "rb") as f:
