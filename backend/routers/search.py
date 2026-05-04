@@ -19,8 +19,17 @@ def _sanitize_fts5_query(query: str) -> str:
     """Sanitize user input for FTS5 MATCH query.
 
     Strategy: Tokenize and use AND + prefix matching.
+    If the user explicitly wraps the query in double quotes, use phrase search.
     """
     cleaned = "".join(ch for ch in query if ch in ("\t", "\n", "\r") or (ord(ch) >= 32)).strip()
+    
+    # If the user explicitly uses double quotes, keep it as phrase search
+    if cleaned.startswith('"') and cleaned.endswith('"') and len(cleaned) >= 2:
+        inner = cleaned[1:-1].replace('"', '""')
+        if not inner.strip():
+            raise AppException(code=4001, message="Search query is empty or invalid", status_code=400)
+        return f'"{inner}"'
+
     tokens = re.findall(r"[0-9A-Za-z\u4e00-\u9fff]+", cleaned)
     if not tokens:
         raise AppException(code=4001, message="Search query is empty or invalid", status_code=400)
@@ -41,24 +50,36 @@ def search_documents(
     except AppException as e:
         raise e
 
-    # FTS5 search with snippet, count via window function to avoid duplicate MATCH
-    sql = text("""
-        SELECT id, title, file_type, status, created_at, snippet, total
-        FROM (
-            SELECT d.id, d.title, d.file_type, d.status, d.created_at,
-                   snippet(documents_fts, 1, '...', '...', '...', 64) as snippet,
-                   COUNT(*) OVER() as total
-            FROM documents_fts
-            JOIN documents d ON d.id = documents_fts.rowid
-            WHERE documents_fts MATCH :query
-              AND d.user_id = :user_id
-            ORDER BY bm25(documents_fts)
-        )
+    # Execute 2 queries instead of window function to avoid FTS5 function restrictions
+    count_sql = text("""
+        SELECT COUNT(*)
+        FROM documents_fts
+        JOIN documents d ON d.id = documents_fts.rowid
+        WHERE documents_fts MATCH :query
+          AND d.user_id = :user_id
+    """)
+
+    data_sql = text("""
+        SELECT d.id, d.title, d.file_type, d.status, d.created_at,
+               snippet(documents_fts, 1, '...', '...', '...', 64) as snippet
+        FROM documents_fts
+        JOIN documents d ON d.id = documents_fts.rowid
+        WHERE documents_fts MATCH :query
+          AND d.user_id = :user_id
+        ORDER BY bm25(documents_fts)
         LIMIT :limit OFFSET :offset
     """)
 
     try:
-        result = db.execute(sql, {
+        # Count total
+        count_result = db.execute(count_sql, {
+            "query": safe_query,
+            "user_id": current_user.id
+        })
+        total = count_result.scalar() or 0
+
+        # fetch items
+        result = db.execute(data_sql, {
             "query": safe_query,
             "user_id": current_user.id,
             "limit": limit,
@@ -69,19 +90,17 @@ def search_documents(
         logger.error(f"Database error during search: {e}")
         raise AppException(code=4002, message="Invalid search query", status_code=400)
 
-    total = rows[0][6] if rows else 0
-
     items = []
     for row in rows:
-        created = row[4]
+        created = row.created_at
         if created and not isinstance(created, str):
             created = created.isoformat()
         items.append({
-            "id": row[0],
-            "title": row[1],
-            "file_type": row[2],
-            "status": row[3],
-            "snippet": row[5] or "",
+            "id": row.id,
+            "title": row.title,
+            "file_type": row.file_type,
+            "status": row.status,
+            "snippet": row.snippet or "",
             "created_at": created,
         })
 
