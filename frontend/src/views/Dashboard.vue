@@ -9,10 +9,10 @@
 
     <!-- Stats cards -->
     <div class="stats-grid">
-      <StatsCard icon="&#128196;" :value="stats.total_docs" label="文档总数" />
-      <StatsCard icon="&#128451;" :value="stats.total_size" label="总大小" format="size" />
-      <StatsCard icon="&#128196;" :value="stats.by_type?.pdf || 0" label="PDF 文档" />
-      <StatsCard icon="&#128196;" :value="stats.by_type?.docx || 0" label="DOCX 文档" />
+      <StatsCard :icon="FileText" :value="stats.total_docs" label="文档总数" />
+      <StatsCard :icon="HardDrive" :value="stats.total_size" label="总大小" format="size" />
+      <StatsCard :icon="FileIcon" :value="stats.by_type?.pdf || 0" label="PDF 文档" />
+      <StatsCard :icon="FileArchive" :value="stats.by_type?.docx || 0" label="DOCX 文档" />
     </div>
 
     <!-- Main grid: recent + top docs -->
@@ -45,6 +45,7 @@ import { getDashboardStats, getDashboardRecent, getDashboardTop, getDashboardAct
 import StatsCard from '../components/StatsCard.vue'
 import RecentDocs from '../components/RecentDocs.vue'
 import ActivityTimeline from '../components/ActivityTimeline.vue'
+import { FileText, HardDrive, File as FileIcon, FileArchive } from 'lucide-vue-next'
 
 const router = useRouter()
 

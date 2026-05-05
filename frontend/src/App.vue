@@ -10,7 +10,11 @@
     </template>
     <AppNavbar v-if="authStore.isAuthenticated" />
     <main class="container app-main">
-      <router-view />
+      <router-view v-slot="{ Component }">
+        <transition name="fade-slide" mode="out-in">
+          <component :is="Component" />
+        </transition>
+      </router-view>
     </main>
   </div>
 </template>

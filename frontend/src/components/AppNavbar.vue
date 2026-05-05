@@ -2,21 +2,42 @@
   <nav class="navbar">
     <div class="container navbar-inner">
       <router-link to="/" class="navbar-brand">BoKe</router-link>
-      <button class="navbar-toggle" @click="mobileOpen = !mobileOpen" aria-label="切换菜单">
-        <span :class="{ open: mobileOpen }"></span>
+      <button class="navbar-toggle" @click="mobileOpen = true" aria-label="打开菜单">
+        <span></span>
       </button>
-      <div class="navbar-actions" :class="{ 'navbar-actions-open': mobileOpen }">
+      <div class="navbar-actions desktop-only">
         <nav class="navbar-links">
-          <router-link to="/" class="nav-link" @click="mobileOpen = false">仪表盘</router-link>
-          <router-link to="/documents" class="nav-link" @click="mobileOpen = false">文档列表</router-link>
-          <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">我的收藏</router-link>
-          <router-link to="/categories" class="nav-link" @click="mobileOpen = false">文档分类</router-link>
+          <router-link to="/" class="nav-link">仪表盘</router-link>
+          <router-link to="/documents" class="nav-link">文档列表</router-link>
+          <router-link to="/favorites" class="nav-link">我的收藏</router-link>
+          <router-link to="/categories" class="nav-link">文档分类</router-link>
         </nav>
         <SearchBar />
         <SettingsDropdown @open-settings="settingsOpen = true" />
       </div>
     </div>
   </nav>
+
+  <!-- Mobile Drawer -->
+  <transition name="fade-slide">
+    <div v-if="mobileOpen" class="drawer-overlay" @click="mobileOpen = false">
+      <div class="drawer-content" @click.stop>
+        <div style="display: flex; justify-content: flex-end; margin-bottom: 1rem;">
+          <button class="btn btn-sm" @click="mobileOpen = false">关闭</button>
+        </div>
+        <nav class="navbar-links-mobile">
+          <router-link to="/" class="nav-link" @click="mobileOpen = false">仪表盘</router-link>
+          <router-link to="/documents" class="nav-link" @click="mobileOpen = false">文档列表</router-link>
+          <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">我的收藏</router-link>
+          <router-link to="/categories" class="nav-link" @click="mobileOpen = false">文档分类</router-link>
+        </nav>
+        <div style="margin-top: 1rem">
+          <SearchBar />
+        </div>
+      </div>
+    </div>
+  </transition>
+
   <SettingsModal v-if="settingsOpen" @close="settingsOpen = false" />
 </template>
 
@@ -110,24 +131,12 @@ const settingsOpen = ref(false)
 
 @media (max-width: 640px) {
   .navbar-toggle { display: flex; align-items: center; justify-content: center; }
-  .navbar-actions {
-    display: none;
-    position: absolute;
-    top: 3.5rem;
-    left: 0;
-    right: 0;
-    background: var(--bg-card);
-    border-bottom: 1px solid var(--border);
-    padding: 0.75rem 1rem;
-    flex-direction: column;
-    gap: 0.75rem;
-    box-shadow: var(--shadow);
-  }
-  .navbar-actions-open { display: flex; }
-  .navbar-links {
+  .desktop-only { display: none !important; }
+  .navbar-links-mobile {
+    display: flex;
     flex-direction: column;
     align-items: stretch;
-    gap: 0.25rem;
+    gap: 0.5rem;
   }
 }
 </style>

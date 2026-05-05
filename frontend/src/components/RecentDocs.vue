@@ -8,14 +8,16 @@
       </div>
     </div>
     <div v-else-if="docs.length === 0" class="empty-hint">{{ emptyText }}</div>
-    <div v-else class="doc-list">
+    <transition-group v-else name="fade-slide" tag="div" class="doc-list">
       <div
         v-for="doc in docs"
         :key="doc.id"
         class="doc-row"
         @click="$emit('navigate', doc.id)"
       >
-        <span class="doc-icon" :class="'ft-' + doc.file_type">{{ doc.file_type.toUpperCase() }}</span>
+        <span class="doc-icon" :class="'ft-' + doc.file_type">
+          <component :is="getFileIcon(doc.file_type)" :size="16" />
+        </span>
         <div class="doc-info">
           <div class="doc-name">{{ doc.title }}</div>
           <div class="doc-meta-row">
@@ -24,12 +26,13 @@
           </div>
         </div>
       </div>
-    </div>
+    </transition-group>
   </div>
 </template>
 
 <script setup>
 import { formatDate, statusLabel } from '../utils/format'
+import { FileText, FileArchive, FileImage, File } from 'lucide-vue-next'
 
 defineProps({
   title: { type: String, default: '文档列表' },
@@ -39,6 +42,14 @@ defineProps({
 })
 
 defineEmits(['navigate'])
+
+function getFileIcon(fileType) {
+  const type = (fileType || '').toLowerCase()
+  if (['pdf'].includes(type)) return FileText
+  if (['docx', 'doc'].includes(type)) return FileArchive
+  if (['jpg', 'jpeg', 'png', 'gif'].includes(type)) return FileImage
+  return File
+}
 </script>
 
 <style scoped>
@@ -67,10 +78,11 @@ defineEmits(['navigate'])
 }
 .doc-row:hover { background: rgba(0, 0, 0, 0.04); }
 .doc-icon {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 700;
-  padding: 0.125rem 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
   border-radius: 4px;
   background: var(--border);
   color: var(--text-secondary);

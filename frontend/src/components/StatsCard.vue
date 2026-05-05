@@ -1,8 +1,12 @@
 <template>
   <div class="card stats-card">
-    <div class="stats-icon">{{ icon }}</div>
+    <div class="stats-icon">
+      <component :is="icon" v-if="typeof icon === 'object' || typeof icon === 'function'" :size="32" :stroke-width="1.5" class="text-primary" />
+      <span v-else>{{ icon }}</span>
+    </div>
     <div class="stats-body">
-      <div class="stats-value">{{ displayValue }}</div>
+      <div v-if="loading" class="skeleton-line" style="width: 60px; height: 1.5rem; margin-bottom: 0.125rem;"></div>
+      <div v-else class="stats-value">{{ displayValue }}</div>
       <div class="stats-label">{{ label }}</div>
     </div>
   </div>
@@ -12,10 +16,11 @@
 import { computed } from 'vue'
 
 const props = defineProps({
-  icon: { type: String, default: '' },
+  icon: { type: [String, Object, Function], default: '' },
   value: { type: [Number, String], default: 0 },
   label: { type: String, default: '' },
-  format: { type: String, default: 'number' }, // number | size
+  format: { type: String, default: 'number' },
+  loading: { type: Boolean, default: false }
 })
 
 const displayValue = computed(() => {
