@@ -103,6 +103,13 @@
           <input type="checkbox" v-model="filters.favoritesOnly" @change="onFilterChange" />
           <span class="fav-toggle-label">&#9733; 收藏</span>
         </label>
+        <select v-model="filters.category" class="input filter-select" @change="onFilterChange">
+          <option value="">全部分类</option>
+          <option value="sujian">素笺</option>
+          <option value="shicui">拾萃</option>
+          <option value="manbi">漫笔</option>
+          <option value="uncategorized">未分类</option>
+        </select>
         <div v-if="hasActiveFilters" class="filter-tags">
           <span v-if="filters.status" class="filter-tag" @click="clearFilter('status')">
             {{ statusLabel(filters.status) }} &times;
@@ -112,6 +119,9 @@
           </span>
           <span v-if="filters.favoritesOnly" class="filter-tag" @click="clearFilter('favoritesOnly')">
             &#9733; 收藏 &times;
+          </span>
+          <span v-if="filters.category" class="filter-tag" @click="clearFilter('category')">
+            {{ categoryLabel(filters.category) }} &times;
           </span>
         </div>
       </div>
@@ -155,6 +165,7 @@
             <div class="doc-title">{{ doc.title }}</div>
             <div class="doc-meta">
               <span class="badge" :class="'badge-' + doc.status">{{ statusLabel(doc.status) }}</span>
+              <span v-if="doc.category" class="badge badge-category">{{ categoryLabel(doc.category) }}</span>
               <span class="doc-type">{{ doc.file_type.toUpperCase() }}</span>
               <span>{{ formatSize(doc.file_size) }}</span>
               <span>{{ formatDate(doc.created_at) }}</span>
@@ -173,6 +184,17 @@
             >
               {{ doc.is_favorite ? '&#9733;' : '&#9734;' }}
             </button>
+            <select
+              class="input category-select"
+              :value="doc.category || ''"
+              @change.stop="handleSetCategory(doc, $event.target.value)"
+              @click.stop
+            >
+              <option value="">未分类</option>
+              <option value="sujian">素笺</option>
+              <option value="shicui">拾萃</option>
+              <option value="manbi">漫笔</option>
+            </select>
             <button
               v-if="doc.status === 'error'"
               class="btn btn-sm"
@@ -205,7 +227,7 @@
 <script setup>
 import { ref, reactive, onMounted, onBeforeUnmount, watch, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments, toggleFavorite } from '../api'
+import { getDocuments, uploadDocument, deleteDocument, retryDocument, searchDocuments, toggleFavorite, setCategory, getCategories } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
 
 const route = useRoute()
@@ -217,7 +239,7 @@ const listError = ref('')
 const page = ref(1)
 const limit = 20
 const total = ref(0)
-const filters = reactive({ status: '', file_type: '', favoritesOnly: false })
+const filters = reactive({ status: '', file_type: '', favoritesOnly: false, category: '' })
 const dragging = ref(false)
 let dragCounter = 0
 
@@ -236,7 +258,7 @@ const searchLoading = ref(false)
 const searchError = ref('')
 
 const authToken = computed(() => localStorage.getItem('access_token') || '')
-const hasActiveFilters = computed(() => filters.status || filters.file_type || filters.favoritesOnly)
+const hasActiveFilters = computed(() => filters.status || filters.file_type || filters.favoritesOnly || filters.category)
 
 // Status polling
 let pollTimer = null
@@ -273,6 +295,7 @@ async function fetchDocs(silent = false) {
       ...(filters.status && { status: filters.status }),
       ...(filters.file_type && { file_type: filters.file_type }),
       ...(filters.favoritesOnly && { is_favorite: true }),
+      ...(filters.category && { category: filters.category }),
     })
     documents.value = res.data.data.items
     total.value = res.data.data.total
@@ -322,6 +345,22 @@ async function handleToggleFavorite(doc) {
   } catch {
     doc.is_favorite = prev // Revert on error
   }
+}
+
+async function handleSetCategory(doc, category) {
+  const prev = doc.category
+  doc.category = category || null // Optimistic update
+  try {
+    await setCategory(doc.id, category || null)
+  } catch {
+    doc.category = prev // Revert on error
+  }
+}
+
+const CATEGORY_LABELS = { sujian: '素笺', shicui: '拾萃', manbi: '漫笔' }
+
+function categoryLabel(category) {
+  return CATEGORY_LABELS[category] || '未分类'
 }
 
 function onDragEnter() {
@@ -508,6 +547,19 @@ onBeforeUnmount(() => {
 }
 .fav-btn:hover { transform: scale(1.2); }
 .fav-active { color: #f59e0b; }
+
+.category-select {
+  font-size: 0.75rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  min-width: 70px;
+  cursor: pointer;
+}
+
+.badge-category {
+  background: #ede9fe;
+  color: #5b21b6;
+}
 
 .filter-fav-toggle {
   display: inline-flex;

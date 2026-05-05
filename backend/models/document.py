@@ -16,6 +16,10 @@ class Document(Base):
             "status IN ('queued','processing','ready','error')",
             name="chk_document_status",
         ),
+        CheckConstraint(
+            "category IN ('sujian','shicui','manbi') OR category IS NULL",
+            name="chk_document_category",
+        ),
     )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -30,6 +34,7 @@ class Document(Base):
     status = Column(String(20), default="queued", index=True)
     error_message = Column(Text, nullable=True)
     is_favorite = Column(Boolean, default=False, index=True)
+    category = Column(String(20), nullable=True, index=True)
     view_count = Column(Integer, default=0)
     last_viewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from backend.database import get_db
 from backend.middleware.auth import get_current_user
 from backend.models.user import User
-from backend.schemas.document import DocumentOut, DocumentListItem, DocumentUpdate
+from backend.schemas.document import DocumentOut, DocumentListItem, DocumentUpdate, CategoryUpdate, CategoryInfo, CATEGORY_LABELS
 from backend.services import document_service, file_service, processing_service, dashboard_service
 from backend.utils.response import ok
 from backend.utils.logger import get_logger
@@ -181,6 +181,7 @@ def list_documents(
     status: str | None = Query(None, pattern="^(queued|processing|ready|error)$"),
     file_type: str | None = Query(None, pattern="^(pdf|docx|md|png|jpg|jpeg)$"),
     is_favorite: bool | None = Query(None),
+    category: str | None = Query(None, pattern="^(sujian|shicui|manbi|uncategorized)$"),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
@@ -194,6 +195,7 @@ def list_documents(
         status=status,
         file_type=file_type,
         is_favorite=is_favorite,
+        category=category,
     )
     items = [DocumentListItem.model_validate(d).model_dump() for d in result["items"]]
     return ok(data={"items": items, "total": result["total"], "page": page, "limit": limit})
@@ -302,3 +304,20 @@ def toggle_favorite(
 ):
     doc = document_service.toggle_favorite(db, doc_id, current_user.id)
     return ok(data={"id": doc.id, "is_favorite": doc.is_favorite})
+
+
+@router.patch("/{doc_id}/category")
+def set_category(
+    doc_id: int,
+    body: CategoryUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    doc = document_service.set_category(db, doc_id, current_user.id, body.category)
+    return ok(data={"id": doc.id, "category": doc.category})
+
+
+@router.get("/categories")
+def list_categories():
+    categories = [CategoryInfo(code=code, label=label) for code, label in CATEGORY_LABELS.items()]
+    return ok(data=[c.model_dump() for c in categories])

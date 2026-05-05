@@ -55,6 +55,7 @@ def list_documents(
     status: str | None = None,
     file_type: str | None = None,
     is_favorite: bool | None = None,
+    category: str | None = None,
 ) -> dict:
     query = db.query(Document).filter(Document.user_id == user_id)
 
@@ -64,6 +65,10 @@ def list_documents(
         query = query.filter(Document.file_type == file_type)
     if is_favorite is not None:
         query = query.filter(Document.is_favorite == is_favorite)
+    if category == "uncategorized":
+        query = query.filter(Document.category.is_(None))
+    elif category is not None:
+        query = query.filter(Document.category == category)
 
     total = query.count()
 
@@ -164,6 +169,18 @@ def toggle_favorite(db: Session, doc_id: int, user_id: int) -> Document:
     db.commit()
     db.refresh(doc)
     logger.info("Document favorite toggled: id=%d, is_favorite=%s", doc_id, doc.is_favorite)
+    return doc
+
+
+def set_category(db: Session, doc_id: int, user_id: int, category: str | None) -> Document:
+    """Set or clear category of a document."""
+    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == user_id).first()
+    if not doc:
+        raise AppException(code=4004, message="Document not found", status_code=404)
+    doc.category = category
+    db.commit()
+    db.refresh(doc)
+    logger.info("Document category updated: id=%d, category=%s", doc_id, category)
     return doc
 
 

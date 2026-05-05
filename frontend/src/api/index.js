@@ -141,6 +141,12 @@ export const reprocessDocument = (id) =>
 export const toggleFavorite = (id) =>
   api.patch(`/documents/${id}/favorite`)
 
+export const setCategory = (id, category) =>
+  api.patch(`/documents/${id}/category`, { category })
+
+export const getCategories = () =>
+  api.get('/documents/categories')
+
 // --- Search ---
 export const searchDocuments = (params) =>
   api.get('/documents/search', { params })
