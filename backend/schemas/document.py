@@ -63,3 +63,9 @@ class CategoryUpdate(BaseModel):
 class CategoryInfo(BaseModel):
     code: str
     label: str
+
+
+class TimelineResponse(BaseModel):
+    groups: dict[str, list[DocumentListItem]]
+    next_before: str | None = None
+    has_more: bool = False

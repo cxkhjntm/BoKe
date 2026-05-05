@@ -117,6 +117,9 @@ export const logout = (refresh_token) =>
 export const getDocuments = (params) =>
   api.get('/documents', { params })
 
+export const getDocumentTimeline = (params) =>
+  api.get('/documents/timeline', { params })
+
 export const getDocument = (id) =>
   api.get(`/documents/${id}`)
 

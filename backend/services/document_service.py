@@ -193,6 +193,59 @@ def record_view(db: Session, doc_id: int, user_id: int) -> None:
         db.commit()
 
 
+def get_document_timeline(
+    db: Session,
+    user_id: int,
+    before: datetime | None = None,
+    limit: int = 20,
+    status: str | None = None,
+    file_type: str | None = None,
+    is_favorite: bool | None = True,
+) -> dict:
+    """Cursor-based timeline of documents, grouped by date."""
+    query = db.query(Document).filter(Document.user_id == user_id)
+
+    if status:
+        query = query.filter(Document.status == status)
+    if file_type:
+        query = query.filter(Document.file_type == file_type)
+    if is_favorite is not None:
+        query = query.filter(Document.is_favorite == is_favorite)
+
+    if before is not None:
+        query = query.filter(Document.created_at < before)
+
+    query = query.order_by(desc(Document.created_at))
+    items = query.limit(limit).all()
+
+    # Group by date string
+    groups: dict[str, list] = {}
+    for doc in items:
+        date_key = doc.created_at.strftime("%Y-%m-%d")
+        groups.setdefault(date_key, []).append(doc)
+
+    # Determine if more exist
+    has_more = False
+    next_before = None
+    if len(items) == limit:
+        last = items[-1]
+        # Check if any docs exist before the last item
+        exists_query = db.query(Document).filter(
+            Document.user_id == user_id,
+            Document.created_at < last.created_at,
+        )
+        if status:
+            exists_query = exists_query.filter(Document.status == status)
+        if file_type:
+            exists_query = exists_query.filter(Document.file_type == file_type)
+        if is_favorite is not None:
+            exists_query = exists_query.filter(Document.is_favorite == is_favorite)
+        has_more = db.query(exists_query.exists()).scalar()
+        next_before = last.created_at.isoformat() if has_more else None
+
+    return {"groups": groups, "next_before": next_before, "has_more": has_more}
+
+
 def rebuild_fts_index(db: Session) -> int:
     """Rebuild FTS5 index. Returns number of documents indexed."""
     from sqlalchemy import text

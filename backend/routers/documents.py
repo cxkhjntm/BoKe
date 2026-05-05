@@ -321,3 +321,40 @@ def set_category(
 def list_categories():
     categories = [CategoryInfo(code=code, label=label) for code, label in CATEGORY_LABELS.items()]
     return ok(data=[c.model_dump() for c in categories])
+
+
+@router.get("/timeline")
+def get_document_timeline(
+    before: str | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    status: str | None = Query(None, pattern="^(queued|processing|ready|error)$"),
+    file_type: str | None = Query(None, pattern="^(pdf|docx|md|png|jpg|jpeg)$"),
+    is_favorite: bool | None = Query(True),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    from datetime import datetime as dt
+
+    before_dt = None
+    if before:
+        before_dt = dt.fromisoformat(before)
+
+    result = document_service.get_document_timeline(
+        db=db,
+        user_id=current_user.id,
+        before=before_dt,
+        limit=limit,
+        status=status,
+        file_type=file_type,
+        is_favorite=is_favorite,
+    )
+    serialized_groups = {}
+    for date_key, docs in result["groups"].items():
+        serialized_groups[date_key] = [
+            DocumentListItem.model_validate(d).model_dump() for d in docs
+        ]
+    return ok(data={
+        "groups": serialized_groups,
+        "next_before": result["next_before"],
+        "has_more": result["has_more"],
+    })
