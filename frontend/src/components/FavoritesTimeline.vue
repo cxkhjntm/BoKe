@@ -23,7 +23,7 @@
           <span class="timeline-date-label">{{ formatGroupDate(dateKey) }}</span>
           <span class="timeline-date-count">{{ docs.length }} 篇</span>
         </div>
-        <div class="doc-list">
+        <TransitionGroup name="list" tag="div" class="doc-list">
           <div
             v-for="(doc, idx) in docs"
             :key="doc.id"
@@ -63,7 +63,7 @@
               </button>
             </div>
           </div>
-        </div>
+        </TransitionGroup>
       </div>
 
       <!-- Load more button -->
@@ -123,7 +123,23 @@ function formatTime(ts) {
 </script>
 
 <style scoped>
-.timeline-view { display: flex; flex-direction: column; gap: 1.5rem; }
+.timeline-view { 
+  display: flex; 
+  flex-direction: column; 
+  gap: 1.5rem; 
+  position: relative;
+  padding-left: 1.5rem;
+}
+.timeline-view::before {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  top: 1rem;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+  z-index: 0;
+}
 
 .timeline-group { display: flex; flex-direction: column; gap: 0.625rem; }
 
@@ -132,31 +148,63 @@ function formatTime(ts) {
   align-items: center;
   gap: 0.5rem;
   padding: 0.25rem 0;
+  position: relative;
 }
 .timeline-date-dot {
-  width: 8px;
-  height: 8px;
+  position: absolute;
+  left: -1.0625rem;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  background: var(--primary);
+  background: var(--bg, #fff);
+  border: 3px solid var(--primary);
   flex-shrink: 0;
+  z-index: 1;
 }
 .timeline-date-label {
-  font-weight: 600;
-  font-size: 0.875rem;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--text);
+  letter-spacing: 0.5px;
 }
 .timeline-date-count {
+  background: var(--bg-hover, #eff6ff);
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
   font-size: 0.75rem;
+  font-weight: 500;
   color: var(--text-secondary);
 }
 
 .doc-list { display: flex; flex-direction: column; gap: 0.625rem; }
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(20px) scale(0.95);
+}
+.list-leave-active {
+  position: absolute;
+}
 
 .doc-card {
   display: flex;
   align-items: stretch;
   cursor: pointer;
   animation: cardIn var(--transition-normal) both;
+  border: 1px solid var(--border);
+  background: var(--card-bg, #fff);
+  border-radius: var(--radius);
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.doc-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+  border-color: rgba(0, 0, 0, 0.1);
 }
 @keyframes cardIn {
   from { opacity: 0; transform: translateY(8px); }
@@ -228,6 +276,7 @@ function formatTime(ts) {
   transition: color var(--transition-fast), transform var(--transition-fast);
 }
 .fav-btn:hover { transform: scale(1.2); }
+.fav-btn:active { transform: scale(0.8); }
 .fav-active { color: #f59e0b; }
 
 .load-more {
@@ -266,6 +315,15 @@ function formatTime(ts) {
 @keyframes shimmer {
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+.skeleton-card:nth-child(2) .skeleton-thumb,
+.skeleton-card:nth-child(2) .skeleton-line {
+  animation-delay: 0.15s;
+}
+.skeleton-card:nth-child(3) .skeleton-thumb,
+.skeleton-card:nth-child(3) .skeleton-line {
+  animation-delay: 0.3s;
 }
 
 @media (prefers-reduced-motion: reduce) {
