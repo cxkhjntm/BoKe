@@ -16,6 +16,9 @@ async def stream_chat_session(
     messages = load_messages(user_id, session_id)
     messages.append({"role": "user", "content": content})
 
+    # Save user message immediately so it persists even if LLM call fails
+    save_messages(user_id, session_id, messages)
+
     req_messages = trim_messages(messages, max_rounds)
     if not any(m.get("role") == "system" for m in req_messages):
         req_messages.insert(0, {"role": "system", "content": DEFAULT_SYSTEM_PROMPT})
