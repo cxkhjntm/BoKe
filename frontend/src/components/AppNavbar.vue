@@ -11,6 +11,7 @@
           <router-link to="/documents" class="nav-link">文档列表</router-link>
           <router-link to="/favorites" class="nav-link">我的收藏</router-link>
           <router-link to="/categories" class="nav-link">文档分类</router-link>
+          <router-link to="/chat" class="nav-link">AI对话</router-link>
         </nav>
         <SearchBar />
         <SettingsDropdown @open-settings="settingsOpen = true" />
@@ -30,6 +31,7 @@
           <router-link to="/documents" class="nav-link" @click="mobileOpen = false">文档列表</router-link>
           <router-link to="/favorites" class="nav-link" @click="mobileOpen = false">我的收藏</router-link>
           <router-link to="/categories" class="nav-link" @click="mobileOpen = false">文档分类</router-link>
+          <router-link to="/chat" class="nav-link" @click="mobileOpen = false">AI对话</router-link>
         </nav>
         <div style="margin-top: 1rem">
           <SearchBar />

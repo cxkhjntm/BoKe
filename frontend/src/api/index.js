@@ -238,6 +238,63 @@ export function getBackgroundUrl(token) {
   return `/api/v1/files/profile/background?token=${encodeURIComponent(token)}`
 }
 
+// --- LLM Config ---
+export const getLLMConfig = () => api.get('/llm-config')
+export const saveLLMConfig = (data) => api.post('/llm-config', data)
+export const deleteLLMConfig = () => api.delete('/llm-config')
+
+// --- Chat Sessions ---
+export const getChatSessions = () => api.get('/chat-sessions')
+export const createChatSession = (data) => api.post('/chat-sessions', data)
+export const updateChatSession = (sessionId, data) => api.patch(`/chat-sessions/${sessionId}`, data)
+export const deleteChatSession = (sessionId) => api.delete(`/chat-sessions/${sessionId}`)
+
+// --- Chat Messages ---
+export const getChatMessages = (sessionId) => api.get(`/chat/messages/${sessionId}`)
+
+export async function sendChatMessage(sessionId, content, onEvent) {
+  const token = localStorage.getItem('access_token')
+  const response = await fetch(`/api/v1/chat/messages/${sessionId}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`,
+    },
+    body: JSON.stringify({ content }),
+  })
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ message: 'Request failed' }))
+    throw new Error(err.message || 'Request failed')
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const lines = buffer.split('\n')
+    buffer = lines.pop() || ''
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        const jsonStr = line.slice(6)
+        if (jsonStr) {
+          try {
+            const event = JSON.parse(jsonStr)
+            onEvent(event)
+            if (event.type === 'error') throw new Error(event.message)
+          } catch (e) {
+            if (e.message !== jsonStr) throw e
+          }
+        }
+      }
+    }
+  }
+}
+
 /**
  * Get authenticated URL for a DOCX extracted image.
  * Uses the cached JWT token from localStorage.
