@@ -28,7 +28,7 @@
       </div>
       <div class="form-row">
         <label>Base URL</label>
-        <input v-model="form.base_url" type="text" class="form-control" placeholder="https://api.example.com/v1" />
+        <input v-model="form.base_url" type="text" class="form-control" placeholder="https://api.example.com/v1" :disabled="isFixedProvider" />
       </div>
       <div class="form-row">
         <label>Model</label>
@@ -47,7 +47,7 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { ref, watch, computed } from 'vue'
 
 const props = defineProps({
   config: { type: Object, default: null },
@@ -69,6 +69,10 @@ const DEFAULT_BASE_URLS = {
   deepseek: 'https://api.deepseek.com/v1',
 }
 
+const FIXED_PROVIDERS = new Set(Object.keys(DEFAULT_BASE_URLS))
+
+const isFixedProvider = computed(() => FIXED_PROVIDERS.has(form.value.provider))
+
 watch(() => props.config, (cfg) => {
   if (cfg) {
     form.value = {
@@ -83,8 +87,8 @@ watch(() => props.config, (cfg) => {
 }, { immediate: true })
 
 watch(() => form.value.provider, (provider) => {
-  if (!form.value.base_url) {
-    form.value.base_url = DEFAULT_BASE_URLS[provider] || ''
+  if (FIXED_PROVIDERS.has(provider)) {
+    form.value.base_url = DEFAULT_BASE_URLS[provider]
   }
 })
 
@@ -166,6 +170,12 @@ function handleDelete() {
 }
 .form-control:focus {
   border-color: var(--primary);
+}
+.form-control:disabled {
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 .form-actions {
   display: flex;

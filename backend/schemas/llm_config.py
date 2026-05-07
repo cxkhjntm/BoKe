@@ -47,14 +47,13 @@ class LLMConfigCreate(BaseModel):
 
     @model_validator(mode="after")
     def fill_base_url(self):
-        if not self.base_url or not self.base_url.strip():
-            default = _PROVIDER_DEFAULT_BASE_URL.get(self.provider)
-            if default:
-                self.base_url = default
-            else:
-                raise ValueError(
-                    f"Unknown provider '{self.provider}'; base_url is required"
-                )
+        default = _PROVIDER_DEFAULT_BASE_URL.get(self.provider)
+        if default:
+            self.base_url = default
+        elif not self.base_url or not self.base_url.strip():
+            raise ValueError(
+                f"Unknown provider '{self.provider}'; base_url is required"
+            )
         return self
 
 

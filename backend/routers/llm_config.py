@@ -51,7 +51,7 @@ def upsert_llm_config(
 ):
     config = db.query(LLMConfig).filter(LLMConfig.user_id == user.id).first()
     encrypted_key = encrypt_api_key(body.api_key)
-    base_url = body.base_url or LLM_PROVIDER_DEFAULTS.get(body.provider, "")
+    base_url = LLM_PROVIDER_DEFAULTS.get(body.provider, body.base_url)
     if config:
         config.provider = body.provider
         config.api_key = encrypted_key
