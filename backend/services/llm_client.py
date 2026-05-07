@@ -36,11 +36,10 @@ async def stream_llm_response(
                         break
                     try:
                         chunk = json.loads(data)
-                        delta = (
-                            chunk.get("choices", [{}])[0]
-                            .get("delta", {})
-                            .get("content", "")
-                        )
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {}).get("content", "")
                         if delta:
                             yield delta
                     except json.JSONDecodeError:
