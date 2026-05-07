@@ -1,111 +1,233 @@
 # Fix Proposal — API Config & Chat 405 Issues
 
-**Branch:** `feature/stage4-polish` (investigation tracked here)  
+**Branch:** `investigate/api-config-chat-405`  
 **Date:** 2026-05-07  
-**Status:** PROPOSED → RECOMMENDED  
+**Based on:** `diagnosis.md` by team-lead (diagnostician)
 
 ---
 
-## 1. Issue Summary & Root Cause Recap
+## Executive Summary
 
-| Issue | Root Cause | Primary Evidence |
-|-------|-----------|------------------|
-| **Issue 1** — No default base URL | `LLMConfigCreate.base_url` is mandatory; frontend form initializes empty | `backend/schemas/llm_config.py:31`, `ChatConfigPanel.vue:63` |
-| **Issue 2** — Save button stuck | Child emits callback ignored by parent; `saving` prop undeclared; underlying 405 | `ChatConfigPanel.vue:91`, `Chat.vue:56`, `ChatConfigPanel.vue:52` |
-| **Issue 3** — 405 on save/chat | Router paths use trailing `/` + catch-all `/{path:path}` suppresses `redirect_slashes` | TestClient: `POST /llm-config` → 405; `POST /llm-config/` → 401 |
+Three coordinated issues block the AI chat feature:
+
+1. **Issue 1 — Missing default base_url:** Users must manually enter provider-specific base URLs (SiliconFlow / DeepSeek) because the backend schema makes `base_url` mandatory with no default.
+2. **Issue 2 — UI "saving forever" bug:** `ChatConfigPanel.vue` emits a callback that `Chat.vue` ignores, and the `saving` prop is not declared, so the internal `saving` ref stays `true` permanently.
+3. **Issue 3 — 405 Method Not Allowed:** FastAPI routers use `path="/"` which, combined with the `prefix`, produces trailing slashes (`/llm-config/`). The SPA fallback `/{path:path}` (GET only) intercepts the no-slash requests and causes Starlette to return 405 instead of redirecting.
+
+All three must be fixed together because they are interdependent (see Cross-Issue Impact Map in diagnosis.md).
 
 ---
 
-## 2. Fix Design
+## Issue 1: 硅基流动 / DeepSeek 应有固定 Base URL
 
-### 2.1 Default Base URL Mapping (Issue 1)
+### Recommended Fix: Backend schema default + frontend auto-fill (Dual-layer)
 
-**Approach:** Make `base_url` optional in the Pydantic schema. If omitted or empty, resolve from a provider→URL lookup table in `backend/config.py`. Update `LLMConfigCreate` validator to allow empty strings and fallback.
+**Rationale:** Making the backend robust (provider-aware defaults) prevents 422 errors even if future frontends forget to pre-fill. Adding frontend auto-fill improves UX by showing the user what URL will be used.
 
-**Files:**
-- `backend/config.py` — add `LLM_PROVIDER_DEFAULTS` dict
-- `backend/schemas/llm_config.py` — make `base_url` optional (`str | None = None`), adjust validator
-- `backend/routers/llm_config.py` — if `body.base_url` is empty/None, use default from config
-- `frontend/src/components/chat/ChatConfigPanel.vue` — auto-fill `base_url` when `provider` changes; allow empty input to mean "use default"
+#### Option A — Backend-only default (Chosen as primary)
 
-### 2.2 Remove Trailing Slashes from Routers (Issue 3)
+Change `backend/schemas/llm_config.py` so `base_url` is optional. If omitted or empty, derive it from `provider` using a hard-coded mapping.
 
-**Approach:** Change `path="/"` to `path=""` in `llm_config` and `chat_sessions` routers. This aligns backend routes with frontend axios URLs and eliminates the 405 caused by catch-all interference.
+```python
+# backend/schemas/llm_config.py
+from pydantic import BaseModel, Field, model_validator
 
-**Files:**
+PROVIDER_DEFAULT_BASE_URL = {
+    "siliconflow": "https://api.siliconflow.cn/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+}
+
+class LLMConfigCreate(BaseModel):
+    provider: str
+    api_key: str = Field(..., min_length=10)
+    base_url: str = ""   # optional, default empty
+    model: str = Field(..., min_length=1)
+
+    @model_validator(mode="after")
+    def fill_base_url(self):
+        if not self.base_url or not self.base_url.strip():
+            default = PROVIDER_DEFAULT_BASE_URL.get(self.provider)
+            if default:
+                self.base_url = default
+            else:
+                raise ValueError(f"Unknown provider '{self.provider}'; base_url is required")
+        return self
+```
+
+**Why this option:**
+- Keeps the API contract simple (clients can omit `base_url` entirely).
+- No database migration needed — the field already exists; we only change validation.
+- Rollback-safe: reverting the schema file restores the old behavior without data loss.
+
+#### Option B — Frontend-only auto-fill (Rejected)
+
+Pre-fill `form.base_url` in `ChatConfigPanel.vue` when `provider` changes.
+
+**Why rejected:** If a different client (mobile app, admin CLI) calls the API without pre-filling, it still gets 422. The fix belongs at the schema layer.
+
+#### Option C — Both backend default + frontend auto-fill (Recommended enhancement)
+
+Apply Option A in the backend **and** add a `watch` on `form.provider` in `ChatConfigPanel.vue` to pre-fill the input for better UX. The backend remains the source of truth.
+
+**Specific file changes:**
+- `backend/schemas/llm_config.py` — add `PROVIDER_DEFAULT_BASE_URL`, make `base_url` default to `""`, add `@model_validator`
+- `frontend/src/components/chat/ChatConfigPanel.vue` — add `watch(() => form.provider, ...)` to pre-fill when user switches providers and field is empty
+
+---
+
+## Issue 2: 保存 API Key 时按钮一直显示"保存中…"
+
+### Recommended Fix: Align parent-child contract via declared prop + callback (Option A)
+
+**Rationale:** The root cause has two layers: (A) the `saving` prop is not declared so it falls through to `$attrs` and is ignored, and (B) the callback emitted by the child is never invoked by the parent. Fixing both layers makes the component contract explicit and robust.
+
+#### Option A — Declare `saving` prop + make parent call callback (Chosen)
+
+1. In `ChatConfigPanel.vue`, declare `saving` as a Boolean prop:
+   ```vue
+   const props = defineProps({
+     config: { type: Object, default: null },
+     saving: { type: Boolean, default: false },   # <-- add
+   })
+   ```
+   Remove the internal `saving` ref entirely; the template already reads `saving` which will now resolve to the prop.
+
+2. In `Chat.vue`, change `handleSaveConfig` to accept and invoke the callback:
+   ```javascript
+   async function handleSaveConfig(cfg, done) {
+     savingConfig.value = true
+     try {
+       await chatStore.saveConfig(cfg)
+     } finally {
+       savingConfig.value = false
+       if (typeof done === 'function') done()   # <-- add
+     }
+   }
+   ```
+
+**Why this option:**
+- Uses the existing prop-driven pattern already intended by `Chat.vue` (`:saving="savingConfig"`).
+- The callback contract (`emit('save', data, done)`) is preserved; no changes to child event emission logic.
+- Rollback-safe: reverting both files restores the previous (broken) behavior without side effects.
+
+#### Option B — Remove callback, rely solely on prop (Rejected)
+
+Remove the callback from `emit('save', ...)` and let `Chat.vue` drive `savingConfig` entirely.
+
+**Why rejected:** It requires changing the child's `handleSave` to not set `saving.value = true` locally. This is a larger behavioral change and breaks the existing callback contract that other callers might rely on.
+
+#### Option C — Use `defineExpose` + template ref (Rejected)
+
+Expose a `resetSaving()` method from the child and call it from the parent via template ref.
+
+**Why rejected:** Template refs are brittle in Vue 3 composition API with `v-if`/`v-show` toggles. The prop + callback pattern is the idiomatic Vue parent-child communication pattern.
+
+**Specific file changes:**
+- `frontend/src/components/chat/ChatConfigPanel.vue` — add `saving` to `defineProps`, remove internal `saving` ref
+- `frontend/src/views/Chat.vue` — invoke `done()` callback in `finally` block of `handleSaveConfig`
+
+---
+
+## Issue 3: AI 聊天界面 "Request failed with status code 405"
+
+### Recommended Fix: Remove trailing slashes from router paths (Option A)
+
+**Rationale:** The 405 is caused by the interaction between trailing-slash routes and the SPA fallback catch-all. The cleanest, lowest-risk fix is to make the backend routes match the frontend URLs exactly (no trailing slash), which is also the convention used by all other routers in the project (`api_keys`, `documents`, `profile`, etc.).
+
+#### Option A — Change `path="/"` to `path=""` in routers (Chosen)
+
+In FastAPI, `APIRouter(prefix="/api/v1/llm-config")` with `@router.get("/")` produces `/api/v1/llm-config/`. Changing the decorator to `@router.get("")` produces `/api/v1/llm-config`.
+
+Apply to:
+- `backend/routers/llm_config.py` — change `@router.get("/")`, `@router.post("/")`, `@router.delete("/")` to `path=""`
+- `backend/routers/chat_sessions.py` — change `@router.get("/")`, `@router.post("/")` to `path=""`
+- `backend/routers/chat.py` — change `@router.get("/")` to `path=""` (preventive, for consistency)
+
+**Why this option:**
+- Zero frontend changes required — the frontend already calls `/llm-config` and `/chat-sessions` without slashes.
+- Aligns with the existing convention in the codebase: `api_keys.py`, `documents.py`, `profile.py` all use `path=""`.
+- Rollback-safe: reverting the router files restores the old paths; no database or config changes.
+- No impact on the SPA fallback — the catch-all remains for genuine client-side routes.
+
+#### Option B — Add trailing slashes to all frontend API calls (Rejected)
+
+Change `frontend/src/api/index.js` to use `/llm-config/`, `/chat-sessions/`, etc.
+
+**Why rejected:**
+- Requires changing every API call site and risks missing some.
+- The existing project convention is no-trailing-slash (all other routers use `path=""`).
+- The SPA fallback would still intercept `/llm-config` (no slash) if a request ever comes in without it.
+
+#### Option C — Restrict SPA fallback to exclude `/api/` paths more aggressively (Rejected)
+
+The SPA fallback already skips `path.startswith("api/")`, but Starlette's route matching happens **before** the handler body runs. We could move the catch-all to a mounted sub-application or use a middleware-based fallback.
+
+**Why rejected:**
+- Far more invasive than adjusting router paths.
+- Could break legitimate SPA client-side routes that happen to look like `/api/...` (unlikely but possible).
+- Adds architectural complexity for a problem that has a one-character fix.
+
+**Specific file changes:**
 - `backend/routers/llm_config.py` — `@router.get("")`, `@router.post("")`, `@router.delete("")`
-- `backend/routers/chat_sessions.py` — same pattern for all four decorators
-- No frontend changes required; axios URLs already omit the slash.
-
-### 2.3 Fix Saving State Synchronization (Issue 2)
-
-**Approach:** Two coordinated frontend fixes:
-
-**A) Prop-based saving state**
-- Declare `saving` as a prop in `ChatConfigPanel.vue`
-- Remove internal `saving` ref
-- Template uses prop `saving` directly (`:disabled="saving"`)
-- Parent `Chat.vue` already manages `savingConfig` and passes it down; this makes the mechanism actually work
-
-**B) Error handling in save flow**
-- `chatStore.saveConfig` already throws on failure
-- `Chat.vue` `handleSaveConfig` already has `try/finally` to reset `savingConfig`
-- With prop-based state, this naturally propagates to the child
-
-**Files:**
-- `frontend/src/components/chat/ChatConfigPanel.vue`
+- `backend/routers/chat_sessions.py` — `@router.get("")`, `@router.post("")`
+- `backend/routers/chat.py` — `@router.get("")` (preventive consistency)
 
 ---
 
-## 3. Alternative Approaches Considered
+## Resource Comparison Table
 
-| Approach | Pros | Cons | Verdict |
-|----------|------|------|---------|
-| **A. Frontend-only** (auto-fill base_url + fix UI) | No backend changes | Does not fix 405; user can still manually clear URL and hit 422/405 | **Rejected** |
-| **B. Backend-only** (slash fix + default URL) | Fixes core issues | UI still stuck if network slow or error; poor UX | **Rejected** |
-| **C. Coordinated** (backend slash+default + frontend prop+autofill) | Fixes all three issues; minimal code; no breaking changes | Requires touching 5 files | **RECOMMENDED** |
-| **D. Remove catch-all SPA fallback** | Eliminates 405 root cause entirely | Breaks Vue SPA client-side routing; high risk | **Rejected** |
+| Fix | CPU delta | Memory delta | Storage delta | Dev time | Test time | Deploy risk | Rollback difficulty |
+|-----|-----------|--------------|---------------|----------|-----------|-------------|---------------------|
+| Issue 1 — Backend schema default (Option A) | +0% | +0~1 MB (validator object) | 0 | 15 min | 10 min | Low | Trivial (`git revert`) |
+| Issue 1 — Frontend auto-fill (Option C add-on) | +0% | +0 MB | 0 | 10 min | 5 min | Low | Trivial (`git revert`) |
+| Issue 2 — Prop + callback fix (Option A) | +0% | +0 MB | 0 | 10 min | 10 min | Low | Trivial (`git revert`) |
+| Issue 3 — Remove trailing slashes (Option A) | +0% | +0 MB | 0 | 5 min | 10 min | Low | Trivial (`git revert`) |
+| **Combined (all three)** | **+0%** | **+0~1 MB** | **0** | **~40 min** | **~30 min** | **Low** | **Trivial (`git revert` on single commit)** |
 
----
-
-## 4. Resource Impact Assessment
-
-| Dimension | Before | After | Delta |
-|-----------|--------|-------|-------|
-| **CPU** | Baseline | Baseline | **0** — no computational change |
-| **Memory (runtime)** | Baseline | Baseline | **0** — no new allocations |
-| **Memory (DB row)** | `base_url` stored as user input | Same | **0** — still stores one string |
-| **Storage (code)** | — | ~+30 lines across 5 files | **Negligible** |
-| **Dev time** | — | ~30 min | — |
-| **Test time** | — | ~15 min (backend schema + route tests) | — |
-| **Deploy risk** | — | **Low** — no DB migration, no auth change, no API envelope change | — |
-| **Rollback difficulty** | — | **Easy** — single `git revert` of the apply commit | — |
-
-### Risk Mitigation
-- No database schema changes; existing `llm_configs` rows remain valid
-- No auth middleware changes
-- No unified response format changes (`ok()` / `fail()` untouched)
-- Route path change from `/` to `""` is backward-compatible for matching; existing clients already call the no-slash URL
+**Notes:**
+- All fixes are code-only; no migrations, no new dependencies, no infra changes.
+- Test time assumes running existing backend pytest + frontend unit tests + manual verification of the save flow.
+- Deploy risk is "Low" because each fix is localized and rollback is a single `git revert`.
 
 ---
 
-## 5. Affected Files & Change Details
+## Specific File Changes Needed
 
-| File | Change Type | Lines | Description |
-|------|-------------|-------|-------------|
-| `backend/config.py` | Add | ~5 | `LLM_PROVIDER_DEFAULTS` mapping dict |
-| `backend/schemas/llm_config.py` | Modify | ~8 | `base_url` optional; validator allows empty/None |
-| `backend/routers/llm_config.py` | Modify | ~4 | Use default URL when `base_url` empty/None; `path=""` |
-| `backend/routers/chat_sessions.py` | Modify | ~4 | `path=""` for all routes |
-| `frontend/src/components/chat/ChatConfigPanel.vue` | Modify | ~15 | Declare `saving` prop; watch `provider` to auto-fill `base_url`; remove internal `saving` ref |
+| File | Change | Issue |
+|------|--------|-------|
+| `backend/schemas/llm_config.py` | Make `base_url` optional with provider defaults via `@model_validator` | 1 |
+| `backend/routers/llm_config.py` | Change `@router.get("/")`, `@router.post("/")`, `@router.delete("/")` to `path=""` | 3 |
+| `backend/routers/chat_sessions.py` | Change `@router.get("/")`, `@router.post("/")` to `path=""` | 3 |
+| `backend/routers/chat.py` | Change `@router.get("/")` to `path=""` (preventive) | 3 |
+| `frontend/src/components/chat/ChatConfigPanel.vue` | Declare `saving` prop; remove internal `saving` ref; add `watch` on `provider` to auto-fill `base_url` | 1, 2 |
+| `frontend/src/views/Chat.vue` | Invoke `done()` callback in `handleSaveConfig` | 2 |
 
 ---
 
-## 6. Verification Plan
+## Rollback Plan
 
-1. **TestClient** — `POST /api/v1/llm-config` (no slash) with valid payload → 200/401 (not 405)
-2. **TestClient** — `POST /api/v1/chat-sessions` (no slash) → 200/401 (not 405)
-3. **Schema test** — `LLMConfigCreate(provider="siliconflow", api_key="sk-test", model="m")` (no base_url) → validates OK
-4. **Schema test** — `LLMConfigCreate(..., base_url="")` → falls back to default
-5. **Frontend unit** — Switch provider in ChatConfigPanel → base_url auto-populates
-6. **E2E** — Click Save in ChatConfigPanel → button state resets on both success and error
+1. All changes are contained in the files listed above.
+2. No database migrations, environment variables, or external services are involved.
+3. If a regression is detected post-deploy, run `git revert <commit-hash>` to restore the previous state instantly.
+4. The SPA fallback and auth middleware are untouched, so the rest of the application remains unaffected.
+
+---
+
+## Testing Plan
+
+1. **Backend unit tests:**
+   - Test `LLMConfigCreate` with `provider="siliconflow"`, no `base_url` → expect `base_url == "https://api.siliconflow.cn/v1"`
+   - Test `LLMConfigCreate` with `provider="deepseek"`, no `base_url` → expect `base_url == "https://api.deepseek.com/v1"`
+   - Test `LLMConfigCreate` with unknown provider, no `base_url` → expect `ValueError`
+   - Test `LLMConfigCreate` with explicit `base_url` → expect explicit value preserved
+
+2. **Backend integration tests (TestClient):**
+   - `POST /api/v1/llm-config` (no trailing slash) with valid payload → 200
+   - `POST /api/v1/chat-sessions` (no trailing slash) with valid payload → 200
+   - `GET /api/v1/chat/` (old trailing slash) → should still work or return 307 (verify Starlette behavior)
+
+3. **Frontend manual / E2E:**
+   - Open Chat page → expand config panel → select SiliconFlow → observe Base URL auto-filled
+   - Clear Base URL → click Save → observe button returns to "保存" state (not stuck)
+   - Refresh page → verify config persisted
+   - Repeat for DeepSeek provider
