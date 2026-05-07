@@ -8,6 +8,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import HTTPException
+from fastapi.encoders import jsonable_encoder
 
 from backend.config import CORS_ORIGINS, RATE_LIMIT_LOGIN, CHAT_RATE_LIMIT_PER_MINUTE
 from backend.database import engine, SessionLocal, Base
@@ -135,7 +136,7 @@ app.add_exception_handler(Exception, global_exception_handler)
 async def validation_exception_handler(_request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"code": 4000, "message": "Validation error", "data": exc.errors()},
+        content={"code": 4000, "message": "Validation error", "data": jsonable_encoder(exc.errors())},
     )
 
 
