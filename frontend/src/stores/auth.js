@@ -23,6 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const backgrounds = ref(JSON.parse(localStorage.getItem('user_backgrounds') || '[]'))
   const carouselInterval = computed(() => userProfile.value?.carousel_interval ?? 5)
+  const maxRounds = computed(() => userProfile.value?.max_rounds ?? 10)
 
   const backgroundUrls = computed(() => {
     if (!accessToken.value) return []
@@ -123,6 +124,7 @@ export const useAuthStore = defineStore('auth', () => {
     backgrounds,
     backgroundUrls,
     carouselInterval,
+    maxRounds,
     login,
     refresh,
     logout,

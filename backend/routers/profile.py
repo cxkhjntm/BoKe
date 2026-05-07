@@ -82,6 +82,8 @@ def update_profile(
         current_user.background_opacity = body.background_opacity
     if body.carousel_interval is not None:
         current_user.carousel_interval = body.carousel_interval
+    if body.max_rounds is not None:
+        current_user.max_rounds = body.max_rounds
     db.commit()
     db.refresh(current_user)
     return ok(data=ProfileOut.model_validate(current_user).model_dump())

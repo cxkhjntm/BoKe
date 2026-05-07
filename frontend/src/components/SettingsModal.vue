@@ -75,6 +75,20 @@
             />
           </div>
 
+          <!-- Max rounds -->
+          <div class="section">
+            <label class="form-label">消息轮数上限: {{ maxRoundsDisplay }}</label>
+            <input
+              type="range"
+              class="slider"
+              min="0"
+              max="30"
+              step="1"
+              v-model.number="maxRounds"
+              @input="onMaxRoundsChange"
+            />
+          </div>
+
           <!-- Opacity -->
           <div class="section">
             <label class="form-label">背景透明度: {{ opacity.toFixed(2) }}</label>
@@ -103,6 +117,8 @@ import {
   updateProfile, getBackgroundUrlById,
 } from '../api'
 
+const MAX_ROUNDS_DEFAULT = 10
+
 const emit = defineEmits(['close'])
 const authStore = useAuthStore()
 
@@ -112,6 +128,12 @@ const avatarPreview = ref(authStore.avatarUrl)
 const backgrounds = ref([...authStore.backgrounds])
 const opacity = ref(authStore.backgroundOpacity)
 const interval = ref(authStore.carouselInterval)
+const maxRounds = ref(authStore.userProfile?.max_rounds ?? MAX_ROUNDS_DEFAULT)
+
+const maxRoundsDisplay = computed(() => {
+  if (maxRounds.value === 0) return '无限制'
+  return `${maxRounds.value}轮`
+})
 
 let saveTimer = null
 
@@ -193,6 +215,18 @@ function onOpacityChange() {
   saveTimer = setTimeout(async () => {
     try {
       const res = await updateProfile({ background_opacity: opacity.value })
+      authStore.updateProfileInStore(res.data.data)
+    } catch {
+      // error handled by interceptor
+    }
+  }, 300)
+}
+
+function onMaxRoundsChange() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    try {
+      const res = await updateProfile({ max_rounds: maxRounds.value })
       authStore.updateProfileInStore(res.data.data)
     } catch {
       // error handled by interceptor
