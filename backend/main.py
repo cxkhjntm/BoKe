@@ -9,7 +9,7 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.exceptions import HTTPException
 
-from backend.config import CORS_ORIGINS, RATE_LIMIT_LOGIN
+from backend.config import CORS_ORIGINS, RATE_LIMIT_LOGIN, CHAT_RATE_LIMIT_PER_MINUTE
 from backend.database import engine, SessionLocal, Base
 from backend.utils.logger import setup_logger, get_logger
 from backend.utils.response import fail
@@ -163,6 +163,7 @@ app.add_middleware(
     rules={
         "/api/v1/auth/login": (RATE_LIMIT_LOGIN, 60),
         "/api/v1/auth/refresh": (10, 60),
+        "/api/v1/chat/messages/": (CHAT_RATE_LIMIT_PER_MINUTE, 60),
     },
 )
 

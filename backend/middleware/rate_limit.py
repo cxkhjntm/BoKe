@@ -41,7 +41,14 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         method = request.method
 
         for pattern, (max_req, window_sec) in self.rules.items():
-            if path == pattern and method == "POST":
+            if method != "POST":
+                continue
+            # Support prefix matching when pattern ends with "/"
+            if pattern.endswith("/"):
+                if not path.startswith(pattern.rstrip("/")):
+                    continue
+            elif path != pattern:
+                continue
                 client_ip = self._get_client_ip(request)
                 key = f"{client_ip}:{pattern}"
                 self._cleanup(key, window_sec)
