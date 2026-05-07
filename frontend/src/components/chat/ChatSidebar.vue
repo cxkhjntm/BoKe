@@ -59,7 +59,7 @@ defineProps({
   loading: { type: Boolean, default: false },
 })
 
-defineEmits(['switch', 'create', 'delete', 'rename'])
+const emit = defineEmits(['switch', 'create', 'delete', 'rename'])
 
 const editingId = ref(null)
 const editingTitle = ref('')
@@ -72,7 +72,7 @@ function startRename(s) {
 function commitRename(sessionId) {
   const title = editingTitle.value.trim()
   if (title) {
-    $emit('rename', sessionId, title)
+    emit('rename', sessionId, title)
   }
   editingId.value = null
   editingTitle.value = ''
