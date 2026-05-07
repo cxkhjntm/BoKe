@@ -15,7 +15,7 @@ from backend.exceptions.handlers import AppException
 router = APIRouter(prefix="/api/v1/chat-sessions", tags=["Chat Sessions"])
 
 
-@router.get("/")
+@router.get("")
 def list_sessions(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -29,7 +29,7 @@ def list_sessions(
     return ok(data={"items": [ChatSessionOut.model_validate(s) for s in sessions]})
 
 
-@router.post("/")
+@router.post("")
 def create_session(
     body: ChatSessionCreate,
     user: User = Depends(get_current_user),

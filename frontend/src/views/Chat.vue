@@ -53,12 +53,13 @@ async function handleCreateSession() {
   }
 }
 
-async function handleSaveConfig(cfg) {
+async function handleSaveConfig(cfg, done) {
   savingConfig.value = true
   try {
     await chatStore.saveConfig(cfg)
   } finally {
     savingConfig.value = false
+    if (typeof done === 'function') done()
   }
 }
 
