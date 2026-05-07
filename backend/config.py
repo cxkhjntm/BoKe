@@ -62,5 +62,10 @@ REDIS_URL = _get_env("REDIS_URL", "redis://localhost:6379/0")
 # --- Rate Limiting ---
 RATE_LIMIT_LOGIN = int(_get_env("RATE_LIMIT_LOGIN", "5"))
 
+# --- Chat ---
+CHAT_MAX_TIMEOUT = int(_get_env("CHAT_MAX_TIMEOUT", "120"))
+CHAT_MAX_MESSAGE_LENGTH = int(_get_env("CHAT_MAX_MESSAGE_LENGTH", "8000"))
+CHAT_RATE_LIMIT_PER_MINUTE = int(_get_env("CHAT_RATE_LIMIT_PER_MINUTE", "20"))
+
 # --- Registration ---
 REGISTRATION_ENABLED = _get_env("REGISTRATION_ENABLED", "false").lower() == "true"

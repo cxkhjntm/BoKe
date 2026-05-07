@@ -33,6 +33,7 @@ class ProfileOut(BaseModel):
     background_path: str | None = None
     background_opacity: float = 0.3
     carousel_interval: int = 5
+    max_rounds: int = 10
     backgrounds: list[BackgroundOut] = []
 
     model_config = {"from_attributes": True}
@@ -41,6 +42,7 @@ class ProfileOut(BaseModel):
 class ProfileUpdate(BaseModel):
     background_opacity: float | None = Field(default=None, ge=0.0, le=1.0)
     carousel_interval: int | None = Field(default=None, ge=1, le=300)
+    max_rounds: int | None = Field(default=None, ge=0, le=30)
 
 
 class BackgroundReorder(BaseModel):
