@@ -1,173 +1,111 @@
-# Fix Proposal: DOCX Embedded Images — Extract and Render Inline
+# Fix Proposal — API Config & Chat 405 Issues
 
-**Date**: 2026-05-03
-**Branch**: `investigate/docx-image-extraction`
-**Status**: PROPOSED
-
----
-
-## 1. Approach Overview
-
-**Strategy**: Extract images to disk during DOCX processing, replace inline base64 with lightweight index markers, add a serving endpoint, and render images inline on the frontend.
-
-**Marker format**: `[image:N]` where N is a 0-based index into the extracted images for that document.
-
-Example `content_text` after fix:
-```
-这是一段文字。
-
-[image:0]
-
-这是另一段文字。
-
-[image:1]
-
-更多文字内容。
-```
+**Branch:** `feature/stage4-polish` (investigation tracked here)  
+**Date:** 2026-05-07  
+**Status:** PROPOSED → RECOMMENDED  
 
 ---
 
-## 2. Affected Files and Changes
+## 1. Issue Summary & Root Cause Recap
 
-### 2.1 Backend: `backend/services/file_service.py`
-**Change**: Add `save_docx_images()` and `delete_docx_images()` helpers.
-
-```python
-def save_docx_images(user_id: int, doc_id: int, images: list[tuple[str, bytes]]) -> list[str]:
-    """Save extracted DOCX images to storage/{user_id}/docx_images/{doc_id}/.
-    images: list of (extension, binary_data)
-    Returns list of relative paths.
-    """
-    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
-    img_dir.mkdir(parents=True, exist_ok=True)
-    paths = []
-    for i, (ext, data) in enumerate(images):
-        filename = f"{i}{ext}"
-        (img_dir / filename).write_bytes(data)
-        paths.append(str((img_dir / filename).relative_to(STORAGE_PATH)))
-    return paths
-
-def delete_docx_images(user_id: int, doc_id: int) -> None:
-    """Delete all extracted images for a DOCX document."""
-    img_dir = STORAGE_PATH / str(user_id) / "docx_images" / str(doc_id)
-    if img_dir.exists():
-        import shutil
-        shutil.rmtree(img_dir)
-```
-
-### 2.2 Backend: `backend/services/extract_service.py`
-**Change**: `_extract_docx()` now saves images to disk and returns lightweight markers.
-
-- Accept additional params: `user_id`, `doc_id`
-- Save images via `file_service.save_docx_images()`
-- Return `content_text` with `[image:N]` markers instead of base64
-
-### 2.3 Backend: `backend/routers/files.py`
-**Change**: Add new endpoint for serving extracted DOCX images.
-
-```
-GET /api/v1/files/{doc_id}/docx_images/{image_index}
-```
-- Auth: JWT Bearer or `?token=` query param (same as thumbnail)
-- Ownership check: verify `doc.user_id == user.id`
-- Path validation: prevent traversal via index bounds check
-- Serve with correct MIME type from file extension
-
-### 2.4 Backend: `backend/services/processing_service.py`
-**Change**: Pass `user_id` and `doc_id` to `extract_service.extract_text()` for DOCX.
-
-### 2.5 Backend: `backend/services/document_service.py`
-**Change**: On document delete, also call `file_service.delete_docx_images()`.
-
-### 2.6 Frontend: `frontend/src/views/Reader.vue`
-**Change**: Replace plain text rendering with structured HTML for DOCX.
-
-- Parse `content_text` with regex: `/\[image:(\d+)\]/g`
-- Split into segments: `[{type: "text", value: "..."}, {type: "image", index: N}, ...]`
-- Render text segments as `<p>` tags, image segments as `<img>` tags
-- Image `src` = `/api/v1/files/{docId}/docx_images/{index}?token={jwt}`
-- Use `v-html` with DOMPurify sanitization (same pattern as Markdown)
-- Add CSS styles for DOCX images (reuse `.md-content img` styles)
-
-### 2.7 Frontend: `frontend/src/api/index.js`
-**Change**: Add `fetchDocxImageUrl(docId, imageIndex)` helper that returns authenticated URL.
+| Issue | Root Cause | Primary Evidence |
+|-------|-----------|------------------|
+| **Issue 1** — No default base URL | `LLMConfigCreate.base_url` is mandatory; frontend form initializes empty | `backend/schemas/llm_config.py:31`, `ChatConfigPanel.vue:63` |
+| **Issue 2** — Save button stuck | Child emits callback ignored by parent; `saving` prop undeclared; underlying 405 | `ChatConfigPanel.vue:91`, `Chat.vue:56`, `ChatConfigPanel.vue:52` |
+| **Issue 3** — 405 on save/chat | Router paths use trailing `/` + catch-all `/{path:path}` suppresses `redirect_slashes` | TestClient: `POST /llm-config` → 405; `POST /llm-config/` → 401 |
 
 ---
 
-## 3. Backward Compatibility
+## 2. Fix Design
 
-Existing documents with `[image: data:...;base64,...]` markers will continue to display as text. Two options:
+### 2.1 Default Base URL Mapping (Issue 1)
 
-| Option | Description | Effort |
-|--------|-------------|--------|
-| A. Auto-migrate | Add a one-time migration script that re-processes all existing DOCX documents | Medium (need to handle edge cases) |
-| B. Manual re-upload | Users re-upload affected documents | Zero effort, but poor UX |
-| C. Frontend dual-format | Frontend handles both old base64 and new index markers | Low effort, covers both |
+**Approach:** Make `base_url` optional in the Pydantic schema. If omitted or empty, resolve from a provider→URL lookup table in `backend/config.py`. Update `LLMConfigCreate` validator to allow empty strings and fallback.
 
-**Recommendation**: Option C — the frontend can detect both marker formats. Old markers render as base64 `<img>` (works, just less efficient), new markers render via serving endpoint. No migration needed.
+**Files:**
+- `backend/config.py` — add `LLM_PROVIDER_DEFAULTS` dict
+- `backend/schemas/llm_config.py` — make `base_url` optional (`str | None = None`), adjust validator
+- `backend/routers/llm_config.py` — if `body.base_url` is empty/None, use default from config
+- `frontend/src/components/chat/ChatConfigPanel.vue` — auto-fill `base_url` when `provider` changes; allow empty input to mean "use default"
+
+### 2.2 Remove Trailing Slashes from Routers (Issue 3)
+
+**Approach:** Change `path="/"` to `path=""` in `llm_config` and `chat_sessions` routers. This aligns backend routes with frontend axios URLs and eliminates the 405 caused by catch-all interference.
+
+**Files:**
+- `backend/routers/llm_config.py` — `@router.get("")`, `@router.post("")`, `@router.delete("")`
+- `backend/routers/chat_sessions.py` — same pattern for all four decorators
+- No frontend changes required; axios URLs already omit the slash.
+
+### 2.3 Fix Saving State Synchronization (Issue 2)
+
+**Approach:** Two coordinated frontend fixes:
+
+**A) Prop-based saving state**
+- Declare `saving` as a prop in `ChatConfigPanel.vue`
+- Remove internal `saving` ref
+- Template uses prop `saving` directly (`:disabled="saving"`)
+- Parent `Chat.vue` already manages `savingConfig` and passes it down; this makes the mechanism actually work
+
+**B) Error handling in save flow**
+- `chatStore.saveConfig` already throws on failure
+- `Chat.vue` `handleSaveConfig` already has `try/finally` to reset `savingConfig`
+- With prop-based state, this naturally propagates to the child
+
+**Files:**
+- `frontend/src/components/chat/ChatConfigPanel.vue`
 
 ---
 
-## 4. Resource Impact Analysis
+## 3. Alternative Approaches Considered
 
-### 4.1 Storage
+| Approach | Pros | Cons | Verdict |
+|----------|------|------|---------|
+| **A. Frontend-only** (auto-fill base_url + fix UI) | No backend changes | Does not fix 405; user can still manually clear URL and hit 422/405 | **Rejected** |
+| **B. Backend-only** (slash fix + default URL) | Fixes core issues | UI still stuck if network slow or error; poor UX | **Rejected** |
+| **C. Coordinated** (backend slash+default + frontend prop+autofill) | Fixes all three issues; minimal code; no breaking changes | Requires touching 5 files | **RECOMMENDED** |
+| **D. Remove catch-all SPA fallback** | Eliminates 405 root cause entirely | Breaks Vue SPA client-side routing; high risk | **Rejected** |
 
-| Metric | Before (base64 in DB) | After (files on disk) | Delta |
-|--------|----------------------|----------------------|-------|
-| DB `content_text` size | ~1.33x original image bytes (base64) | ~0.001x (just markers) | **-99% DB storage for images** |
-| Disk storage | 0 (images in DB) | ~1.0x original image bytes | **+disk, but native format** |
-| Example: 10 images × 500KB | ~6.65 MB in DB | ~5 MB on disk + ~100 bytes in DB | Net savings ~1.6 MB per doc |
+---
 
-### 4.2 CPU
+## 4. Resource Impact Assessment
 
-| Operation | Before | After | Delta |
+| Dimension | Before | After | Delta |
 |-----------|--------|-------|-------|
-| Upload processing | base64 encode (fast) | file write (fast) | Negligible |
-| Serving | N/A (data in DB response) | File read + stream | Minimal increase |
-| Frontend parse | N/A (plain text) | Regex split | Negligible |
+| **CPU** | Baseline | Baseline | **0** — no computational change |
+| **Memory (runtime)** | Baseline | Baseline | **0** — no new allocations |
+| **Memory (DB row)** | `base_url` stored as user input | Same | **0** — still stores one string |
+| **Storage (code)** | — | ~+30 lines across 5 files | **Negligible** |
+| **Dev time** | — | ~30 min | — |
+| **Test time** | — | ~15 min (backend schema + route tests) | — |
+| **Deploy risk** | — | **Low** — no DB migration, no auth change, no API envelope change | — |
+| **Rollback difficulty** | — | **Easy** — single `git revert` of the apply commit | — |
 
-### 4.3 Memory
-
-| Scenario | Before | After | Delta |
-|----------|--------|-------|-------|
-| DB query for document | Loads full base64 into memory | Loads small marker text | **-significant for image-heavy docs** |
-| Frontend render | Entire base64 in DOM as text | Images loaded lazily via `<img>` | **-significant** |
-
-### 4.4 Network
-
-| Scenario | Before | After | Delta |
-|----------|--------|-------|-------|
-| GET /documents/{id} | Returns full base64 in JSON | Returns small markers | **-90%+ for image-heavy docs** |
-| Image loading | N/A | Separate requests per image | +HTTP overhead per image |
-
-### 4.5 Development & Risk
-
-| Dimension | Estimate |
-|-----------|----------|
-| Backend changes | ~3 files, ~80 lines new/modified |
-| Frontend changes | ~1 file, ~50 lines new/modified |
-| Dev time | 2-4 hours |
-| Test time | 1-2 hours |
-| Deployment risk | LOW — no DB schema change, no migration required |
-| Rollback difficulty | EASY — `git revert` the commit; old docs still work with base64 format |
+### Risk Mitigation
+- No database schema changes; existing `llm_configs` rows remain valid
+- No auth middleware changes
+- No unified response format changes (`ok()` / `fail()` untouched)
+- Route path change from `/` to `""` is backward-compatible for matching; existing clients already call the no-slash URL
 
 ---
 
-## 5. Security Considerations
+## 5. Affected Files & Change Details
 
-1. **Auth on image endpoint**: Must verify JWT + document ownership (same pattern as existing endpoints)
-2. **Path traversal**: Index-based lookup (not filename) prevents traversal attacks
-3. **XSS**: DOMPurify sanitization on frontend (already used for Markdown)
-4. **File type validation**: Only serve files from the docx_images directory, verify MIME types
+| File | Change Type | Lines | Description |
+|------|-------------|-------|-------------|
+| `backend/config.py` | Add | ~5 | `LLM_PROVIDER_DEFAULTS` mapping dict |
+| `backend/schemas/llm_config.py` | Modify | ~8 | `base_url` optional; validator allows empty/None |
+| `backend/routers/llm_config.py` | Modify | ~4 | Use default URL when `base_url` empty/None; `path=""` |
+| `backend/routers/chat_sessions.py` | Modify | ~4 | `path=""` for all routes |
+| `frontend/src/components/chat/ChatConfigPanel.vue` | Modify | ~15 | Declare `saving` prop; watch `provider` to auto-fill `base_url`; remove internal `saving` ref |
 
 ---
 
-## 6. Recommended Implementation Order
+## 6. Verification Plan
 
-1. `file_service.py` — add `save_docx_images()` / `delete_docx_images()`
-2. `extract_service.py` — modify `_extract_docx()` to save images and use `[image:N]` markers
-3. `processing_service.py` — pass `user_id`/`doc_id` through to extraction
-4. `files.py` router — add `GET /{doc_id}/docx_images/{index}` endpoint
-5. `document_service.py` — cleanup images on document delete
-6. `Reader.vue` — parse markers and render inline images
-7. Tests — update extraction tests, add integration test for image serving
+1. **TestClient** — `POST /api/v1/llm-config` (no slash) with valid payload → 200/401 (not 405)
+2. **TestClient** — `POST /api/v1/chat-sessions` (no slash) → 200/401 (not 405)
+3. **Schema test** — `LLMConfigCreate(provider="siliconflow", api_key="sk-test", model="m")` (no base_url) → validates OK
+4. **Schema test** — `LLMConfigCreate(..., base_url="")` → falls back to default
+5. **Frontend unit** — Switch provider in ChatConfigPanel → base_url auto-populates
+6. **E2E** — Click Save in ChatConfigPanel → button state resets on both success and error
