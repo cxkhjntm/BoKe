@@ -67,5 +67,11 @@ CHAT_MAX_TIMEOUT = int(_get_env("CHAT_MAX_TIMEOUT", "120"))
 CHAT_MAX_MESSAGE_LENGTH = int(_get_env("CHAT_MAX_MESSAGE_LENGTH", "8000"))
 CHAT_RATE_LIMIT_PER_MINUTE = int(_get_env("CHAT_RATE_LIMIT_PER_MINUTE", "20"))
 
+# --- LLM Provider Defaults ---
+LLM_PROVIDER_DEFAULTS = {
+    "siliconflow": "https://api.siliconflow.cn/v1",
+    "deepseek": "https://api.deepseek.com/v1",
+}
+
 # --- Registration ---
 REGISTRATION_ENABLED = _get_env("REGISTRATION_ENABLED", "false").lower() == "true"

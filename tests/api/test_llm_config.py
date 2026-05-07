@@ -9,7 +9,7 @@ from backend.models.user import User
 
 class TestGetLLMConfig:
     def test_empty_when_not_set(self, client, auth_headers):
-        response = client.get("/api/v1/llm-config/", headers=auth_headers)
+        response = client.get("/api/v1/llm-config", headers=auth_headers)
         assert response.status_code == 200
         assert response.json()["data"] is None
 
@@ -27,7 +27,7 @@ class TestGetLLMConfig:
         db_session.add(config)
         db_session.commit()
 
-        response = client.get("/api/v1/llm-config/", headers=auth_headers)
+        response = client.get("/api/v1/llm-config", headers=auth_headers)
         assert response.status_code == 200
         data = response.json()["data"]
         assert data["provider"] == "siliconflow"
@@ -41,7 +41,7 @@ class TestGetLLMConfig:
 class TestUpsertLLMConfig:
     def test_create_config(self, client, auth_headers):
         response = client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "siliconflow",
@@ -57,7 +57,7 @@ class TestUpsertLLMConfig:
 
     def test_update_existing(self, client, auth_headers):
         client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "siliconflow",
@@ -67,7 +67,7 @@ class TestUpsertLLMConfig:
             },
         )
         response = client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "deepseek",
@@ -83,7 +83,7 @@ class TestUpsertLLMConfig:
 
     def test_invalid_base_url_blocked(self, client, auth_headers):
         response = client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "evil",
@@ -96,7 +96,7 @@ class TestUpsertLLMConfig:
 
     def test_short_api_key_rejected(self, client, auth_headers):
         response = client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "siliconflow",
@@ -109,7 +109,7 @@ class TestUpsertLLMConfig:
 
     def test_empty_model_rejected(self, client, auth_headers):
         response = client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "siliconflow",
@@ -124,7 +124,7 @@ class TestUpsertLLMConfig:
 class TestDeleteLLMConfig:
     def test_delete_existing(self, client, auth_headers):
         client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=auth_headers,
             json={
                 "provider": "siliconflow",
@@ -133,14 +133,14 @@ class TestDeleteLLMConfig:
                 "model": "model",
             },
         )
-        response = client.delete("/api/v1/llm-config/", headers=auth_headers)
+        response = client.delete("/api/v1/llm-config", headers=auth_headers)
         assert response.status_code == 200
 
-        get_resp = client.get("/api/v1/llm-config/", headers=auth_headers)
+        get_resp = client.get("/api/v1/llm-config", headers=auth_headers)
         assert get_resp.json()["data"] is None
 
     def test_idempotent_delete(self, client, auth_headers):
-        response = client.delete("/api/v1/llm-config/", headers=auth_headers)
+        response = client.delete("/api/v1/llm-config", headers=auth_headers)
         assert response.status_code == 200
 
 
@@ -181,7 +181,7 @@ class TestCrossUserAccess:
         token_b, _ = create_access_token(user_b.id)
         headers_b = {"Authorization": f"Bearer {token_b}"}
 
-        response = client.get("/api/v1/llm-config/", headers=headers_b)
+        response = client.get("/api/v1/llm-config", headers=headers_b)
         assert response.status_code == 200
         assert response.json()["data"] is None
 
@@ -222,7 +222,7 @@ class TestCrossUserAccess:
         headers_b = {"Authorization": f"Bearer {token_b}"}
 
         response = client.post(
-            "/api/v1/llm-config/",
+            "/api/v1/llm-config",
             headers=headers_b,
             json={
                 "provider": "deepseek",

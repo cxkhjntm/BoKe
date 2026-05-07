@@ -5,6 +5,7 @@ from backend.database import get_db
 from backend.middleware.auth import get_current_user
 from backend.models.user import User
 from backend.models.llm_config import LLMConfig
+from backend.config import LLM_PROVIDER_DEFAULTS
 from backend.schemas.llm_config import LLMConfigCreate, LLMConfigOut
 from backend.utils.response import ok
 from backend.utils.crypto_utils import encrypt_api_key, decrypt_api_key
@@ -31,7 +32,7 @@ def _to_out(config: LLMConfig) -> dict:
     }
 
 
-@router.get("/")
+@router.get("")
 def get_llm_config(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -42,7 +43,7 @@ def get_llm_config(
     return ok(data=_to_out(config))
 
 
-@router.post("/")
+@router.post("")
 def upsert_llm_config(
     body: LLMConfigCreate,
     user: User = Depends(get_current_user),
@@ -50,17 +51,18 @@ def upsert_llm_config(
 ):
     config = db.query(LLMConfig).filter(LLMConfig.user_id == user.id).first()
     encrypted_key = encrypt_api_key(body.api_key)
+    base_url = body.base_url or LLM_PROVIDER_DEFAULTS.get(body.provider, "")
     if config:
         config.provider = body.provider
         config.api_key = encrypted_key
-        config.base_url = str(body.base_url)
+        config.base_url = base_url
         config.model = body.model
     else:
         config = LLMConfig(
             user_id=user.id,
             provider=body.provider,
             api_key=encrypted_key,
-            base_url=str(body.base_url),
+            base_url=base_url,
             model=body.model,
         )
         db.add(config)
@@ -69,7 +71,7 @@ def upsert_llm_config(
     return ok(data=_to_out(config))
 
 
-@router.delete("/")
+@router.delete("")
 def delete_llm_config(
     user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

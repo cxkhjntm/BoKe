@@ -51,11 +51,11 @@ import { ref, watch } from 'vue'
 
 const props = defineProps({
   config: { type: Object, default: null },
+  saving: { type: Boolean, default: false },
 })
 const emit = defineEmits(['save', 'cancel', 'delete'])
 
 const expanded = ref(false)
-const saving = ref(false)
 const error = ref('')
 const form = ref({
   provider: 'siliconflow',
@@ -63,6 +63,11 @@ const form = ref({
   base_url: '',
   model: '',
 })
+
+const DEFAULT_BASE_URLS = {
+  siliconflow: 'https://api.siliconflow.cn/v1',
+  deepseek: 'https://api.deepseek.com/v1',
+}
 
 watch(() => props.config, (cfg) => {
   if (cfg) {
@@ -77,6 +82,12 @@ watch(() => props.config, (cfg) => {
   }
 }, { immediate: true })
 
+watch(() => form.value.provider, (provider) => {
+  if (!form.value.base_url) {
+    form.value.base_url = DEFAULT_BASE_URLS[provider] || ''
+  }
+})
+
 function handleSave() {
   error.value = ''
   if (!form.value.api_key.trim()) {
@@ -87,11 +98,7 @@ function handleSave() {
     error.value = 'Model 不能为空'
     return
   }
-  saving.value = true
-  emit('save', { ...form.value }, () => {
-    saving.value = false
-    expanded.value = false
-  })
+  emit('save', { ...form.value })
 }
 
 function handleCancel() {

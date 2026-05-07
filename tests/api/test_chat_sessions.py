@@ -10,7 +10,7 @@ from backend.services import chat_storage
 
 class TestListSessions:
     def test_empty_list(self, client, auth_headers):
-        response = client.get("/api/v1/chat-sessions/", headers=auth_headers)
+        response = client.get("/api/v1/chat-sessions", headers=auth_headers)
         assert response.status_code == 200
         assert response.json()["data"]["items"] == []
 
@@ -21,21 +21,21 @@ class TestListSessions:
         db_session.add_all([s1, s2])
         db_session.commit()
 
-        response = client.get("/api/v1/chat-sessions/", headers=auth_headers)
+        response = client.get("/api/v1/chat-sessions", headers=auth_headers)
         assert response.status_code == 200
         items = response.json()["data"]["items"]
         assert len(items) == 2
         assert items[0]["title"] == "Session 2"  # ordered by updated_at desc
 
     def test_unauthorized(self, client):
-        response = client.get("/api/v1/chat-sessions/")
+        response = client.get("/api/v1/chat-sessions")
         assert response.status_code == 401
 
 
 class TestCreateSession:
     def test_create_success(self, client, auth_headers):
         response = client.post(
-            "/api/v1/chat-sessions/",
+            "/api/v1/chat-sessions",
             headers=auth_headers,
             json={"title": "My Chat"},
         )
@@ -46,7 +46,7 @@ class TestCreateSession:
 
     def test_default_title(self, client, auth_headers):
         response = client.post(
-            "/api/v1/chat-sessions/",
+            "/api/v1/chat-sessions",
             headers=auth_headers,
             json={},
         )
@@ -135,7 +135,7 @@ class TestCrossUserAccess:
         token_b, _ = create_access_token(user_b.id)
         headers_b = {"Authorization": f"Bearer {token_b}"}
 
-        response = client.get("/api/v1/chat-sessions/", headers=headers_b)
+        response = client.get("/api/v1/chat-sessions", headers=headers_b)
         assert response.json()["data"]["items"] == []
 
     def test_user_cannot_delete_others_session(self, client, db_session):
