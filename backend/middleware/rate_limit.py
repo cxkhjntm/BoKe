@@ -43,36 +43,40 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         for pattern, (max_req, window_sec) in self.rules.items():
             if method != "POST":
                 continue
-            # Support prefix matching when pattern ends with "/"
+            matched = False
             if pattern.endswith("/"):
-                if not path.startswith(pattern.rstrip("/")):
-                    continue
-            elif path != pattern:
+                if path.startswith(pattern.rstrip("/")):
+                    matched = True
+            elif path == pattern:
+                matched = True
+
+            if not matched:
                 continue
-                client_ip = self._get_client_ip(request)
-                key = f"{client_ip}:{pattern}"
-                self._cleanup(key, window_sec)
 
-                remaining = max(0, max_req - len(self._windows[key]))
+            client_ip = self._get_client_ip(request)
+            key = f"{client_ip}:{pattern}"
+            self._cleanup(key, window_sec)
 
-                if len(self._windows[key]) >= max_req:
-                    logger.warning("Rate limit exceeded for %s on %s", client_ip, pattern)
-                    response = JSONResponse(
-                        status_code=429,
-                        content={
-                            "code": 4029,
-                            "message": "Too many requests",
-                            "data": None,
-                        },
-                    )
-                    response.headers["X-RateLimit-Limit"] = str(max_req)
-                    response.headers["X-RateLimit-Remaining"] = "0"
-                    return response
+            remaining = max(0, max_req - len(self._windows[key]))
 
-                self._windows[key].append(time.time())
-                response = await call_next(request)
+            if len(self._windows[key]) >= max_req:
+                logger.warning("Rate limit exceeded for %s on %s", client_ip, pattern)
+                response = JSONResponse(
+                    status_code=429,
+                    content={
+                        "code": 4029,
+                        "message": "Too many requests",
+                        "data": None,
+                    },
+                )
                 response.headers["X-RateLimit-Limit"] = str(max_req)
-                response.headers["X-RateLimit-Remaining"] = str(remaining)
+                response.headers["X-RateLimit-Remaining"] = "0"
                 return response
+
+            self._windows[key].append(time.time())
+            response = await call_next(request)
+            response.headers["X-RateLimit-Limit"] = str(max_req)
+            response.headers["X-RateLimit-Remaining"] = str(remaining)
+            return response
 
         return await call_next(request)
