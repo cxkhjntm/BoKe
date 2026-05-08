@@ -26,3 +26,5 @@ class User(Base):
     backgrounds = relationship("UserBackground", back_populates="user", cascade="all, delete-orphan", order_by="UserBackground.position")
     llm_config = relationship("LLMConfig", back_populates="user", uselist=False, cascade="all, delete-orphan")
     chat_sessions = relationship("ChatSession", back_populates="user", cascade="all, delete-orphan")
+    embedding_config = relationship("EmbeddingConfig", back_populates="user", uselist=False, cascade="all, delete-orphan")
+    rag_config = relationship("RAGConfig", back_populates="user", uselist=False, cascade="all, delete-orphan")

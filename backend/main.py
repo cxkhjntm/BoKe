@@ -19,7 +19,7 @@ from backend.middleware.rate_limit import RateLimitMiddleware
 from backend.middleware.logging import RequestLoggingMiddleware
 from backend.services.auth_service import init_admin
 
-from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health, admin, dashboard, profile, llm_config, chat_sessions
+from backend.routers import auth, documents, search, files, chat, milvus, api_keys, health, admin, dashboard, profile, llm_config, chat_sessions, rag_config
 
 setup_logger()
 logger = get_logger("main")
@@ -58,10 +58,12 @@ def _run_migrations():
     """Run Alembic migrations to upgrade the database schema."""
     from alembic.config import Config
     from alembic import command
+    from backend import config
 
     project_root = Path(__file__).resolve().parent.parent
     alembic_cfg = Config(str(project_root / "alembic.ini"))
     alembic_cfg.set_main_option("script_location", str(project_root / "alembic"))
+    alembic_cfg.set_main_option("sqlalchemy.url", config.DATABASE_URL)
     try:
         command.upgrade(alembic_cfg, "head")
         logger.info("Database migrations applied successfully.")
@@ -185,6 +187,7 @@ app.include_router(dashboard.router)
 app.include_router(profile.router)
 app.include_router(llm_config.router)
 app.include_router(chat_sessions.router)
+app.include_router(rag_config.router)
 
 # Serve Vue3 frontend (built static files)
 _FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"

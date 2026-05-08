@@ -12,6 +12,30 @@ from backend.exceptions.handlers import AppException
 logger = get_logger("services.document")
 
 
+def _cleanup_rag_chunks(db: Session, user_id: int, file_path: str) -> None:
+    try:
+        from types import SimpleNamespace
+
+        from backend.models.embedding_config import EmbeddingConfig
+        from backend.services import rag_service
+        from backend.utils.crypto_utils import decrypt_api_key
+
+        embedding_cfg = db.query(EmbeddingConfig).filter(EmbeddingConfig.user_id == user_id).first()
+        if not embedding_cfg or not embedding_cfg.api_key:
+            return
+
+        ec = SimpleNamespace(
+            api_key=decrypt_api_key(str(embedding_cfg.api_key)),
+            base_url=str(embedding_cfg.base_url),
+            model_name=str(embedding_cfg.model_name),
+            vector_dimension=int(embedding_cfg.vector_dimension),
+        )
+
+        rag_service.delete_document_chunks(user_id, file_path, ec)
+    except Exception as e:
+        logger.warning("RAG chunk cleanup failed (non-fatal): user_id=%d, file=%s, error=%s", user_id, file_path, e)
+
+
 def create_document(
     db: Session,
     user_id: int,
@@ -92,6 +116,8 @@ def delete_document(db: Session, doc_id: int, user_id: int) -> None:
     if doc.status in ("queued", "processing"):
         raise AppException(code=4005, message="Cannot delete document while processing", status_code=409)
 
+    _cleanup_rag_chunks(db, user_id, doc.file_path)
+
     # Delete physical files
     file_service.delete_file(doc.file_path)
     if doc.thumbnail_path:
@@ -169,7 +195,96 @@ def toggle_favorite(db: Session, doc_id: int, user_id: int) -> Document:
     db.commit()
     db.refresh(doc)
     logger.info("Document favorite toggled: id=%d, is_favorite=%s", doc_id, doc.is_favorite)
+
+    _handle_favorite_rag(db, user_id, doc)
+
     return doc
+
+
+def _handle_favorite_rag(db: Session, user_id: int, doc: Document) -> None:
+    try:
+        from types import SimpleNamespace
+
+        from backend.models.embedding_config import EmbeddingConfig
+        from backend.models.rag_config import RAGConfig
+        from backend.services import rag_service
+        from backend.utils.crypto_utils import decrypt_api_key
+
+        embedding_cfg = db.query(EmbeddingConfig).filter(EmbeddingConfig.user_id == user_id).first()
+
+        if doc.is_favorite:
+            # Auto-create default EmbeddingConfig if missing
+            if not embedding_cfg:
+                embedding_cfg = EmbeddingConfig(
+                    user_id=user_id,
+                    base_url="https://api.siliconflow.cn/v1",
+                    model_name="BAAI/bge-large-zh-v1.5",
+                    vector_dimension=1024,
+                )
+                db.add(embedding_cfg)
+                db.commit()
+                db.refresh(embedding_cfg)
+                logger.info("Auto-created default EmbeddingConfig for user_id=%d", user_id)
+
+            # Can't index without an API key
+            if not embedding_cfg.api_key:
+                logger.warning(
+                    "EmbeddingConfig has no API key for user_id=%d, skipping RAG indexing. Please set an API key in RAG settings.",
+                    user_id,
+                )
+                return
+
+            # Auto-create default RAGConfig if missing
+            rag_cfg = db.query(RAGConfig).filter(RAGConfig.user_id == user_id).first()
+            if not rag_cfg:
+                rag_cfg = RAGConfig(
+                    user_id=user_id,
+                    chunk_size=300,
+                    chunk_overlap=50,
+                    top_k=3,
+                    threshold_dist=0.35,
+                    query_buffer=10,
+                )
+                db.add(rag_cfg)
+                db.commit()
+                db.refresh(rag_cfg)
+                logger.info("Auto-created default RAGConfig for user_id=%d", user_id)
+
+            if not doc.content_text:
+                logger.warning("Document content_text missing for doc_id=%d, skipping RAG indexing", doc.id)
+                return
+
+            ec = SimpleNamespace(
+                api_key=decrypt_api_key(str(embedding_cfg.api_key)),
+                base_url=str(embedding_cfg.base_url),
+                model_name=str(embedding_cfg.model_name),
+                vector_dimension=int(embedding_cfg.vector_dimension),
+            )
+
+            chunk_count = rag_service.process_document(
+                user_id=user_id,
+                file_path=doc.file_path,
+                file_content=doc.content_text,
+                rag_config=rag_cfg,
+                embedding_config=ec,
+            )
+            logger.info("RAG indexed %d chunks for favorited doc_id=%d", chunk_count, doc.id)
+        else:
+            # Unfavorite — need embedding config to delete chunks
+            if not embedding_cfg or not embedding_cfg.api_key:
+                return
+
+            ec = SimpleNamespace(
+                api_key=decrypt_api_key(str(embedding_cfg.api_key)),
+                base_url=str(embedding_cfg.base_url),
+                model_name=str(embedding_cfg.model_name),
+                vector_dimension=int(embedding_cfg.vector_dimension),
+            )
+
+            deleted = rag_service.delete_document_chunks(user_id, doc.file_path, ec)
+            logger.info("RAG deleted %d chunks for unfavorited doc_id=%d", deleted, doc.id)
+    except Exception as e:
+        logger.error("RAG favorite indexing/deletion failed (non-fatal): user_id=%d, doc_id=%d, error=%s", user_id, doc.id, e, exc_info=True)
 
 
 def set_category(db: Session, doc_id: int, user_id: int, category: str | None) -> Document:

@@ -6,6 +6,8 @@ from backend.models.activity import ActivityLog
 from backend.models.user_background import UserBackground
 from backend.models.llm_config import LLMConfig
 from backend.models.chat_session import ChatSession
+from backend.models.embedding_config import EmbeddingConfig
+from backend.models.rag_config import RAGConfig
 
 __all__ = [
     "User",
@@ -16,4 +18,6 @@ __all__ = [
     "UserBackground",
     "LLMConfig",
     "ChatSession",
+    "EmbeddingConfig",
+    "RAGConfig",
 ]

@@ -45,6 +45,12 @@ const routes = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/settings/rag',
+    name: 'RAGSettings',
+    component: () => import('../views/RAGSettings.vue'),
+    meta: { requiresAuth: true },
+  },
+  {
     path: '/:pathMatch(.*)*',
     redirect: '/',
   },

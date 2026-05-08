@@ -51,6 +51,10 @@
                 <span>{{ formatSize(doc.file_size) }}</span>
                 <span>{{ formatTime(doc.created_at) }}</span>
               </div>
+              <div class="rag-active-indicator">
+                <span class="rag-dot"></span>
+                <span class="rag-label">RAG Active</span>
+              </div>
             </div>
             <div class="doc-card-actions">
               <button
@@ -256,6 +260,42 @@ function formatTime(ts) {
 .doc-title { font-weight: 600; font-size: 0.9375rem; margin-bottom: 0.25rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .doc-meta { display: flex; align-items: center; gap: 0.5rem; font-size: 0.8125rem; color: var(--text-secondary); flex-wrap: wrap; }
 .doc-type { font-family: var(--font-mono); font-size: 0.75rem; }
+
+.rag-active-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.125rem 0.5rem;
+  background: var(--status-ready-bg);
+  border: 1px solid var(--alert-success-border);
+  border-radius: 9999px;
+  width: fit-content;
+}
+
+.rag-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--success);
+  animation: ragPulse 2s ease-in-out infinite;
+}
+
+@keyframes ragPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rag-dot { animation: none; }
+}
+
+.rag-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: var(--success);
+  letter-spacing: 0.3px;
+}
 
 .doc-card-actions {
   display: flex;

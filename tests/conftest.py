@@ -23,6 +23,18 @@ from backend.services.auth_service import init_admin
 from backend.utils.security import create_access_token
 
 
+# --- Database cleanup ---
+
+@pytest.fixture(scope="session", autouse=True)
+def _clean_test_db():
+    """Remove leftover test database files before the test session starts."""
+    db_path = Path("data/test.db")
+    for suffix in ("", "-shm", "-wal"):
+        p = db_path.parent / (db_path.name + suffix) if suffix else db_path
+        if p.exists():
+            p.unlink()
+
+
 # --- Database fixtures ---
 
 @pytest.fixture(scope="session")
