@@ -32,8 +32,16 @@ def _fetch_rag_context(user_id: int, query: str) -> str | None:
             logger.warning("RAG config missing for user_id=%d, skipping RAG context", user_id)
             return None
 
+        from types import SimpleNamespace
+        ec = SimpleNamespace(
+            api_key=decrypt_api_key(str(embedding_config.api_key)),
+            base_url=str(embedding_config.base_url),
+            model_name=str(embedding_config.model_name),
+            vector_dimension=int(embedding_config.vector_dimension),
+        )
+
         chunks = query_context(
-            user_id, query, rag_config, embedding_config
+            user_id, query, rag_config, ec
         )
         if not chunks:
             return None
@@ -66,9 +74,11 @@ async def stream_chat_session(
 
     rag_context = _fetch_rag_context(user_id, content)
     if rag_context:
-        for msg in req_messages:
+        for i, msg in enumerate(req_messages):
             if msg.get("role") == "system":
-                msg["content"] = (
+                # Create a copy to prevent modifying the dictionary saved to chat history
+                req_messages[i] = msg.copy()
+                req_messages[i]["content"] = (
                     f"Relevant documents:\n{rag_context}\n\n"
                     f"{msg['content']}"
                 )
