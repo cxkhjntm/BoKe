@@ -135,7 +135,9 @@ const maxRoundsDisplay = computed(() => {
   return `${maxRounds.value}轮`
 })
 
-let saveTimer = null
+let intervalSaveTimer = null
+let opacitySaveTimer = null
+let maxRoundsSaveTimer = null
 
 function bgThumbStyle(bg) {
   const url = getBackgroundUrlById(bg.id, authStore.accessToken)
@@ -199,8 +201,8 @@ async function removeBackground(bgId) {
 }
 
 function onIntervalChange() {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
+  clearTimeout(intervalSaveTimer)
+  intervalSaveTimer = setTimeout(async () => {
     try {
       const res = await updateProfile({ carousel_interval: interval.value })
       authStore.updateProfileInStore(res.data.data)
@@ -211,8 +213,8 @@ function onIntervalChange() {
 }
 
 function onOpacityChange() {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
+  clearTimeout(opacitySaveTimer)
+  opacitySaveTimer = setTimeout(async () => {
     try {
       const res = await updateProfile({ background_opacity: opacity.value })
       authStore.updateProfileInStore(res.data.data)
@@ -223,8 +225,8 @@ function onOpacityChange() {
 }
 
 function onMaxRoundsChange() {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
+  clearTimeout(maxRoundsSaveTimer)
+  maxRoundsSaveTimer = setTimeout(async () => {
     try {
       const res = await updateProfile({ max_rounds: maxRounds.value })
       authStore.updateProfileInStore(res.data.data)
@@ -234,7 +236,11 @@ function onMaxRoundsChange() {
   }, 300)
 }
 
-onUnmounted(() => clearTimeout(saveTimer))
+onUnmounted(() => {
+  clearTimeout(intervalSaveTimer)
+  clearTimeout(opacitySaveTimer)
+  clearTimeout(maxRoundsSaveTimer)
+})
 </script>
 
 <style scoped>
