@@ -156,6 +156,8 @@ def retry_document(db: Session, doc_id: int, user_id: int) -> Document:
             message="Only documents with 'error' status can be retried",
             status_code=409,
         )
+    if doc.thumbnail_path:
+        file_service.delete_file(doc.thumbnail_path)
     doc.status = "queued"
     doc.error_message = None
     doc.content_text = None
@@ -179,9 +181,10 @@ def reprocess_document(db: Session, doc_id: int, user_id: int) -> Document:
             message="Cannot reprocess while document is already queued or processing",
             status_code=409,
         )
-    # Clean up old extracted images
     if doc.file_type == "docx":
         file_service.delete_docx_images(doc.user_id, doc.id)
+    if doc.thumbnail_path:
+        file_service.delete_file(doc.thumbnail_path)
     doc.status = "queued"
     doc.error_message = None
     doc.content_text = None
