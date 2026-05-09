@@ -92,8 +92,12 @@ async def stream_chat_session(
         ):
             full_reply += delta
             yield delta
+    except Exception as e:
+        if not full_reply:
+            full_reply = f"抱歉，AI 回复时出现错误：{e}"
+            yield full_reply
+        raise
     finally:
-        # Clear sensitive data from memory
         api_key = ""
 
     messages.append({"role": "assistant", "content": full_reply})
