@@ -2,10 +2,18 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login as apiLogin, logout as apiLogout, refreshToken as apiRefresh, revokeAllBlobUrls, getProfile, getBackgrounds } from '../api'
 
+function safeJsonParse(key, fallback) {
+  try {
+    return JSON.parse(localStorage.getItem(key) || JSON.stringify(fallback))
+  } catch {
+    return fallback
+  }
+}
+
 export const useAuthStore = defineStore('auth', () => {
   const accessToken = ref(localStorage.getItem('access_token') || '')
   const refreshTokenVal = ref(localStorage.getItem('refresh_token') || '')
-  const userProfile = ref(JSON.parse(localStorage.getItem('user_profile') || 'null'))
+  const userProfile = ref(safeJsonParse('user_profile', null))
 
   const isAuthenticated = computed(() => !!accessToken.value)
 
@@ -21,7 +29,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const backgroundOpacity = computed(() => userProfile.value?.background_opacity ?? 0.3)
 
-  const backgrounds = ref(JSON.parse(localStorage.getItem('user_backgrounds') || '[]'))
+  const backgrounds = ref(safeJsonParse('user_backgrounds', []))
   const carouselInterval = computed(() => userProfile.value?.carousel_interval ?? 5)
   const maxRounds = computed(() => userProfile.value?.max_rounds ?? 10)
 
