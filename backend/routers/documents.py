@@ -238,6 +238,12 @@ def get_document_timeline(
     })
 
 
+@router.get("/categories")
+def list_categories():
+    categories = [CategoryInfo(code=code, label=label) for code, label in CATEGORY_LABELS.items()]
+    return ok(data=[c.model_dump() for c in categories])
+
+
 @router.get("/{doc_id}")
 def get_document(
     doc_id: int,
@@ -352,9 +358,3 @@ def set_category(
 ):
     doc = document_service.set_category(db, doc_id, current_user.id, body.category)
     return ok(data={"id": doc.id, "category": doc.category})
-
-
-@router.get("/categories")
-def list_categories():
-    categories = [CategoryInfo(code=code, label=label) for code, label in CATEGORY_LABELS.items()]
-    return ok(data=[c.model_dump() for c in categories])
