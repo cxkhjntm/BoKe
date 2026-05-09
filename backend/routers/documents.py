@@ -132,15 +132,19 @@ def upload_document(
     relative_path = file_service.save_file(current_user.id, file.filename, content, "original")
 
     # Create document record with queued status
-    doc = document_service.create_document(
-        db=db,
-        user_id=current_user.id,
-        title=doc_title,
-        original_filename=file.filename,
-        file_type=file_type,
-        file_size=len(content),
-        file_path=relative_path,
-    )
+    try:
+        doc = document_service.create_document(
+            db=db,
+            user_id=current_user.id,
+            title=doc_title,
+            original_filename=file.filename,
+            file_type=file_type,
+            file_size=len(content),
+            file_path=relative_path,
+        )
+    except Exception:
+        file_service.delete_file(relative_path)
+        raise
 
     # Snapshot the document before dispatch. In sync fallback mode, processing
     # modifies doc in-place (status → ready/error). The client expects 'queued'
