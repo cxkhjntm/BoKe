@@ -79,7 +79,9 @@ async def stream_chat_session(
                 # Create a copy to prevent modifying the dictionary saved to chat history
                 req_messages[i] = msg.copy()
                 req_messages[i]["content"] = (
-                    f"Relevant documents:\n{rag_context}\n\n"
+                    f"[系统提示：以下内容是从用户知识库中检索到的相关文档片段，请基于这些检索内容来回答用户的问题。"
+                    f"请注意，这些内容来源于用户的文档库，而非用户本人提供的信息。]\n\n"
+                    f"<知识库检索结果>\n{rag_context}\n</知识库检索结果>\n\n"
                     f"{msg['content']}"
                 )
                 break

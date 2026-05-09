@@ -124,6 +124,8 @@ def get_or_create_collection(
     return collection
 
 
+import re
+
 def process_document(
     user_id: int,
     file_path: str,
@@ -131,27 +133,13 @@ def process_document(
     rag_config: _RAGConfig,
     embedding_config: _EmbeddingConfig,
 ) -> int:
-    """Process a document: chunk, embed, and upsert into the user's collection.
-
-    Parameters
-    ----------
-    user_id:
-        The owning user's ID.
-    file_path:
-        Original file path (stored as metadata on each chunk).
-    file_content:
-        Plain-text content of the document.
-    rag_config:
-        An object with ``chunk_size`` and ``chunk_overlap`` attributes.
-    embedding_config:
-        Embedding provider configuration.
-
-    Returns
-    -------
-    int
-        The number of chunks stored.
-    """
+    """Process a document: chunk, embed, and upsert into the user's collection."""
     collection = get_or_create_collection(user_id, embedding_config)
+
+    # Use regex to strip out any image markers (both modern numeric and legacy base64 styles)
+    # matching either [image:X] or [image: data:...;base64,...] or generic markdown images 
+    # to avoid polluting chunks and embeddings with non-textual data.
+    clean_content = re.sub(r'\[image:(?:\d+|\s*data:[^;]+;base64,[A-Za-z0-9+/=\s]+)\]', '', file_content)
 
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=rag_config.chunk_size,
@@ -159,7 +147,7 @@ def process_document(
         length_function=len,
         separators=["\n\n", "\n", "。", "！", "？", ".", "!", "?", " ", ""],
     )
-    chunks = splitter.split_text(file_content)
+    chunks = splitter.split_text(clean_content)
 
     if not chunks:
         logger.warning("No chunks produced for file '%s' (user %d)", file_path, user_id)
