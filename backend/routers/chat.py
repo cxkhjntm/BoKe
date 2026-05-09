@@ -1,5 +1,7 @@
 import json
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sse_starlette.sse import EventSourceResponse
@@ -79,6 +81,8 @@ async def post_message(
                 "event": "finish",
                 "data": json.dumps({"type": "finish", "content": full_content}),
             }
+            session.updated_at = datetime.utcnow()
+            db.commit()
         except Exception as e:
             logger.exception("Chat stream error")
             yield {
