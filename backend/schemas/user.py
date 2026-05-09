@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class LoginRequest(BaseModel):
@@ -46,4 +46,11 @@ class ProfileUpdate(BaseModel):
 
 
 class BackgroundReorder(BaseModel):
-    background_ids: list[int]
+    background_ids: list[int] = Field(min_length=1)
+
+    @field_validator("background_ids")
+    @classmethod
+    def validate_unique_ids(cls, v: list[int]) -> list[int]:
+        if len(v) != len(set(v)):
+            raise ValueError("background_ids must not contain duplicates")
+        return v
