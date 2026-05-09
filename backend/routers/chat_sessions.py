@@ -79,7 +79,7 @@ def delete_session(
     )
     if not session:
         raise AppException(code=4004, message="Session not found", status_code=404)
+    delete_session_files(user.id, session_id)
     db.delete(session)
     db.commit()
-    delete_session_files(user.id, session_id)
     return ok()
