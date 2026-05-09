@@ -47,11 +47,22 @@ def process_document(db: Session, doc) -> None:
     text_ok = _extract_text_step(db, doc, abs_path)
     thumb_ok = _generate_thumbnail_step(db, doc, abs_path)
 
-    if not text_ok and not thumb_ok:
+    # Image types (png, jpg, jpeg) don't have extractable text — thumbnail-only is OK
+    _TEXT_BASED_TYPES = {"pdf", "docx", "md"}
+    needs_text = doc.file_type in _TEXT_BASED_TYPES
+
+    if needs_text and not text_ok:
         doc.status = "error"
-        doc.error_message = "Processing failed: could not extract text or generate thumbnail"
+        doc.error_message = "Processing failed: could not extract text content"
         db.commit()
-        logger.error("Document processing fully failed: id=%d", doc.id)
+        logger.error("Document text extraction failed: id=%d", doc.id)
+        return
+
+    if not needs_text and not thumb_ok:
+        doc.status = "error"
+        doc.error_message = "Processing failed: could not generate thumbnail"
+        db.commit()
+        logger.error("Document thumbnail generation failed: id=%d", doc.id)
         return
 
     doc.status = "ready"
