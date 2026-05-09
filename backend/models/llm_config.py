@@ -11,7 +11,7 @@ class LLMConfig(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
     )
     provider = Column(String(20), nullable=False)
     api_key = Column(String(500), nullable=False)
