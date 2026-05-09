@@ -140,7 +140,8 @@ let opacitySaveTimer = null
 let maxRoundsSaveTimer = null
 
 function bgThumbStyle(bg) {
-  const url = getBackgroundUrlById(bg.id, authStore.accessToken)
+  const hash = bg.image_path ? bg.image_path.split('/').pop().split('.')[0] : bg.id
+  const url = getBackgroundUrlById(bg.id, authStore.accessToken, hash)
   return {
     backgroundImage: `url(${url})`,
     backgroundSize: 'cover',

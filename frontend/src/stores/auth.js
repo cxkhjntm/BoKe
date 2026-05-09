@@ -19,12 +19,14 @@ export const useAuthStore = defineStore('auth', () => {
 
   const avatarUrl = computed(() => {
     if (!userProfile.value?.avatar_path || !accessToken.value) return null
-    return `/api/v1/files/profile/avatar?token=${encodeURIComponent(accessToken.value)}`
+    const hash = userProfile.value.avatar_path.split('/').pop().split('.')[0]
+    return `/api/v1/files/profile/avatar?token=${encodeURIComponent(accessToken.value)}&v=${hash}`
   })
 
   const backgroundUrl = computed(() => {
     if (!userProfile.value?.background_path || !accessToken.value) return null
-    return `/api/v1/files/profile/background?token=${encodeURIComponent(accessToken.value)}`
+    const hash = userProfile.value.background_path.split('/').pop().split('.')[0]
+    return `/api/v1/files/profile/background?token=${encodeURIComponent(accessToken.value)}&v=${hash}`
   })
 
   const backgroundOpacity = computed(() => userProfile.value?.background_opacity ?? 0.3)
@@ -35,9 +37,12 @@ export const useAuthStore = defineStore('auth', () => {
 
   const backgroundUrls = computed(() => {
     if (!accessToken.value) return []
-    return backgrounds.value.map(bg =>
-      `/api/v1/files/profile/backgrounds/${bg.id}?token=${encodeURIComponent(accessToken.value)}`
-    )
+    return backgrounds.value.map(bg => {
+      // Use image_path as a cache buster to prevent showing old image
+      // if SQLite reuses the bg.id after deletion
+      const hash = bg.image_path ? bg.image_path.split('/').pop().split('.')[0] : bg.id
+      return `/api/v1/files/profile/backgrounds/${bg.id}?token=${encodeURIComponent(accessToken.value)}&v=${hash}`
+    })
   })
 
   // Sync reactive state when the API interceptor refreshes tokens

@@ -226,8 +226,12 @@ export const deleteBackgroundMulti = (id) =>
 export const reorderBackgrounds = (backgroundIds) =>
   api.put('/profile/backgrounds/reorder', { background_ids: backgroundIds })
 
-export function getBackgroundUrlById(bgId, token) {
-  return `/api/v1/files/profile/backgrounds/${bgId}?token=${encodeURIComponent(token)}`
+export function getBackgroundUrlById(bgId, token, hash = '') {
+  let url = `/api/v1/files/profile/backgrounds/${bgId}?token=${encodeURIComponent(token)}`
+  if (hash) {
+    url += `&v=${encodeURIComponent(hash)}`
+  }
+  return url
 }
 
 export function getAvatarUrl(token) {
