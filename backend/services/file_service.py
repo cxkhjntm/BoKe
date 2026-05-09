@@ -37,7 +37,9 @@ def save_file(user_id: int, filename: str, file_content: bytes, subfolder: str =
 
 def delete_file(relative_path: str) -> None:
     """Delete a file relative to STORAGE_PATH."""
-    full_path = STORAGE_PATH / relative_path
+    full_path = (STORAGE_PATH / relative_path).resolve()
+    if not full_path.is_relative_to(STORAGE_PATH.resolve()):
+        raise ValueError("Path traversal detected")
     if full_path.exists():
         full_path.unlink()
         logger.info("File deleted: %s", relative_path)
