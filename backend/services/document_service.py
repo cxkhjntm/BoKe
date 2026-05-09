@@ -118,16 +118,22 @@ def delete_document(db: Session, doc_id: int, user_id: int) -> None:
 
     _cleanup_rag_chunks(db, user_id, doc.file_path)
 
-    # Delete physical files
-    file_service.delete_file(doc.file_path)
-    if doc.thumbnail_path:
-        file_service.delete_file(doc.thumbnail_path)
-    if doc.file_type == "docx":
-        file_service.delete_docx_images(doc.user_id, doc.id)
+    # Capture file paths before deleting DB record
+    file_path = doc.file_path
+    thumbnail_path = doc.thumbnail_path
+    is_docx = doc.file_type == "docx"
 
+    # Delete DB record first (within transaction)
     db.delete(doc)
     db.commit()
     logger.info("Document deleted: id=%d", doc_id)
+
+    # Delete physical files after successful DB commit
+    file_service.delete_file(file_path)
+    if thumbnail_path:
+        file_service.delete_file(thumbnail_path)
+    if is_docx:
+        file_service.delete_docx_images(user_id, doc_id)
 
 
 def update_document(db: Session, doc_id: int, user_id: int, title: str | None = None) -> Document:
