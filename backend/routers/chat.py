@@ -59,7 +59,17 @@ async def post_message(
     if not config:
         raise AppException(code=4005, message="LLM config not set", status_code=400)
 
-    # 4. Read max_rounds
+    # 4. Auto-update session title if it's still the default "新会话"
+    if session.title == "新会话":
+        title_text = body.content.strip()
+        if len(title_text) > 10:
+            session.title = title_text[:10] + "..."
+        else:
+            session.title = title_text
+        db.commit()
+        db.refresh(session)
+
+    # 5. Read max_rounds
     max_rounds = current_user.max_rounds or 0
 
     async def event_generator():

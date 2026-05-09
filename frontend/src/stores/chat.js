@@ -90,6 +90,17 @@ export const useChatStore = defineStore('chat', () => {
     error.value = null
     streaming.value = true
 
+    // Auto-update session title if it's still the default "新会话"
+    const currentSession = sessions.value.find(s => s.session_id === currentSessionId.value)
+    if (currentSession && currentSession.title === '新会话') {
+      const titleText = content.trim()
+      if (titleText.length > 10) {
+        currentSession.title = titleText.substring(0, 10) + '...'
+      } else {
+        currentSession.title = titleText
+      }
+    }
+
     // Optimistic update: add user message immediately
     messages.value.push({ role: 'user', content })
     const assistantMsg = { role: 'assistant', content: '' }
