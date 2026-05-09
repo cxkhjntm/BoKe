@@ -2,7 +2,7 @@ from pathlib import Path
 from datetime import datetime
 
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, asc
+from sqlalchemy import desc, asc, func
 
 from backend.models.document import Document
 from backend.services import file_service
@@ -309,12 +309,15 @@ def set_category(db: Session, doc_id: int, user_id: int, category: str | None) -
 
 
 def record_view(db: Session, doc_id: int, user_id: int) -> None:
-    """Increment view count and update last_viewed_at."""
-    doc = db.query(Document).filter(Document.id == doc_id, Document.user_id == user_id).first()
-    if doc:
-        doc.view_count = (doc.view_count or 0) + 1
-        doc.last_viewed_at = datetime.utcnow()
-        db.commit()
+    """Increment view count and update last_viewed_at atomically."""
+    now = datetime.utcnow()
+    db.query(Document).filter(
+        Document.id == doc_id, Document.user_id == user_id
+    ).update({
+        Document.view_count: func.coalesce(Document.view_count, 0) + 1,
+        Document.last_viewed_at: now,
+    })
+    db.commit()
 
 
 def get_document_timeline(
