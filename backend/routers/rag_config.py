@@ -113,7 +113,7 @@ def upsert_rag_config(
         config.chunk_size = body.chunk_size
         config.chunk_overlap = body.chunk_overlap
         config.top_k = body.top_k
-        config.threshold_dist = body.threshold_dist
+        config.threshold_dist = body.threshold_distance
         config.query_buffer = body.query_buffer
     else:
         config = RAGConfig(
@@ -121,7 +121,7 @@ def upsert_rag_config(
             chunk_size=body.chunk_size,
             chunk_overlap=body.chunk_overlap,
             top_k=body.top_k,
-            threshold_dist=body.threshold_dist,
+            threshold_dist=body.threshold_distance,
             query_buffer=body.query_buffer,
         )
         db.add(config)

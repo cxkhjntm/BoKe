@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class EmbeddingConfigBase(BaseModel):
@@ -27,7 +27,11 @@ class RAGConfigBase(BaseModel):
     chunk_size: int = 300
     chunk_overlap: int = 50
     top_k: int = 3
-    threshold_dist: float = 0.35
+    threshold_distance: float = Field(
+        default=0.35,
+        validation_alias="threshold_dist",
+        serialization_alias="threshold_distance",
+    )
     query_buffer: int = 10
 
     @field_validator("chunk_size")
@@ -51,11 +55,11 @@ class RAGConfigBase(BaseModel):
             raise ValueError("top_k must be >= 1")
         return v
 
-    @field_validator("threshold_dist")
+    @field_validator("threshold_distance")
     @classmethod
-    def validate_threshold_dist(cls, v: float) -> float:
+    def validate_threshold_distance(cls, v: float) -> float:
         if v <= 0 or v > 2.0:
-            raise ValueError("threshold_dist must be between 0 and 2.0")
+            raise ValueError("threshold_distance must be between 0 and 2.0")
         return v
 
     @field_validator("query_buffer")
@@ -67,7 +71,7 @@ class RAGConfigBase(BaseModel):
 
 
 class RAGConfigCreate(RAGConfigBase):
-    pass
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class RAGConfigOut(RAGConfigBase):
