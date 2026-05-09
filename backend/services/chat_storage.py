@@ -25,7 +25,10 @@ def load_messages(user_id: int, session_id: str) -> list[dict]:
     if not path.exists():
         return []
     with FileLock(str(path) + ".lock"):
-        return json.loads(path.read_text(encoding="utf-8"))
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, UnicodeDecodeError):
+            return []
 
 
 def save_messages(user_id: int, session_id: str, messages: list[dict]) -> None:
