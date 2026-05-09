@@ -98,12 +98,13 @@ def upload_avatar(
     content = file.file.read()
     _validate_image(file, content)
 
-    _delete_profile_file(current_user, "avatar_path")
-
+    old_path = current_user.avatar_path
     relative_path = file_service.save_file(current_user.id, file.filename, content, "profile")
     current_user.avatar_path = relative_path
     db.commit()
     db.refresh(current_user)
+    if old_path:
+        file_service.delete_file(old_path)
     return ok(data=ProfileOut.model_validate(current_user).model_dump())
 
 
@@ -128,12 +129,13 @@ def upload_background(
     content = file.file.read()
     _validate_image(file, content)
 
-    _delete_profile_file(current_user, "background_path")
-
+    old_path = current_user.background_path
     relative_path = file_service.save_file(current_user.id, file.filename, content, "profile")
     current_user.background_path = relative_path
     db.commit()
     db.refresh(current_user)
+    if old_path:
+        file_service.delete_file(old_path)
     return ok(data=ProfileOut.model_validate(current_user).model_dump())
 
 
