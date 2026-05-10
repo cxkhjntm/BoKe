@@ -11,11 +11,13 @@
     />
     <div class="chat-main">
       <ChatConfigPanel
-        :config="chatStore.config"
+        :configs="chatStore.configs"
+        :active-config="chatStore.activeConfig"
         :saving="savingConfig"
         @save="handleSaveConfig"
-        @cancel="chatStore.fetchConfig"
+        @cancel="chatStore.fetchConfigs"
         @delete="handleDeleteConfig"
+        @activate="handleActivateConfig"
       />
       <ChatMessageList
         :messages="chatStore.messages"
@@ -63,17 +65,26 @@ async function handleSaveConfig(cfg, done) {
   }
 }
 
-async function handleDeleteConfig() {
+async function handleDeleteConfig(provider) {
   savingConfig.value = true
   try {
-    await chatStore.clearConfig()
+    await chatStore.deleteConfig(provider)
+  } finally {
+    savingConfig.value = false
+  }
+}
+
+async function handleActivateConfig(provider) {
+  savingConfig.value = true
+  try {
+    await chatStore.activateConfig(provider)
   } finally {
     savingConfig.value = false
   }
 }
 
 onMounted(async () => {
-  await chatStore.fetchConfig()
+  await chatStore.fetchConfigs()
   await chatStore.fetchSessions()
   if (chatStore.sessions.length === 0) {
     const session = await chatStore.createSession()

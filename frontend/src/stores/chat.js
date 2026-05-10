@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import {
-  getLLMConfig, saveLLMConfig, deleteLLMConfig,
+  getLLMConfigs, getActiveLLMConfig, saveLLMConfig, activateLLMProvider, deleteLLMConfig,
   getChatSessions, createChatSession, updateChatSession, deleteChatSession,
   getChatMessages, sendChatMessage,
 } from '../api'
@@ -10,7 +10,8 @@ export const useChatStore = defineStore('chat', () => {
   const sessions = ref([])
   const currentSessionId = ref(null)
   const messages = ref([])
-  const config = ref(null)
+  const configs = ref([])
+  const activeConfig = ref(null)
   const streaming = ref(false)
   const error = ref(null)
   const loadingSessions = ref(false)
@@ -90,7 +91,6 @@ export const useChatStore = defineStore('chat', () => {
     error.value = null
     streaming.value = true
 
-    // Auto-update session title if it's still the default "新会话"
     const currentSession = sessions.value.find(s => s.session_id === currentSessionId.value)
     if (currentSession && currentSession.title === '新会话') {
       const titleText = content.trim()
@@ -101,7 +101,6 @@ export const useChatStore = defineStore('chat', () => {
       }
     }
 
-    // Optimistic update: add user message immediately
     messages.value.push({ role: 'user', content })
     const assistantMsg = { role: 'assistant', content: '' }
     messages.value.push(assistantMsg)
@@ -116,46 +115,58 @@ export const useChatStore = defineStore('chat', () => {
       })
     } catch (e) {
       error.value = e.message
-      // Remove the empty assistant message on error
       messages.value = messages.value.filter(m => m !== assistantMsg)
     } finally {
       streaming.value = false
     }
   }
 
-  async function fetchConfig() {
+  async function fetchConfigs() {
     try {
-      const res = await getLLMConfig()
-      config.value = res.data.data
+      const res = await getLLMConfigs()
+      configs.value = res.data.data || []
+      const activeRes = await getActiveLLMConfig()
+      activeConfig.value = activeRes.data.data
     } catch {
-      config.value = null
+      configs.value = []
+      activeConfig.value = null
     }
   }
 
   async function saveConfig(cfg) {
     try {
-      const res = await saveLLMConfig(cfg)
-      config.value = res.data.data
+      await saveLLMConfig(cfg)
+      await fetchConfigs()
     } catch (e) {
       error.value = e.message
       throw e
     }
   }
 
-  async function clearConfig() {
+  async function activateConfig(provider) {
     try {
-      await deleteLLMConfig()
-      config.value = null
+      await activateLLMProvider(provider)
+      await fetchConfigs()
+    } catch (e) {
+      error.value = e.message
+      throw e
+    }
+  }
+
+  async function deleteConfig(provider) {
+    try {
+      await deleteLLMConfig(provider)
+      await fetchConfigs()
     } catch (e) {
       error.value = e.message
     }
   }
 
   return {
-    sessions, currentSessionId, messages, config, streaming, error,
+    sessions, currentSessionId, messages, configs, activeConfig, streaming, error,
     loadingSessions, loadingMessages, currentSession,
     fetchSessions, createSession, switchSession, fetchMessages,
     renameSession, removeSession, sendMessage,
-    fetchConfig, saveConfig, clearConfig,
+    fetchConfigs, saveConfig, activateConfig, deleteConfig,
   }
 })

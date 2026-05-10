@@ -54,8 +54,13 @@ async def post_message(
     if len(body.content) > CHAT_MAX_MESSAGE_LENGTH:
         raise AppException(code=4008, message="Message too long", status_code=400)
 
-    # 3. Verify user has LLM config
-    config = db.query(LLMConfig).filter(LLMConfig.user_id == current_user.id).first()
+    # 3. Verify user has LLM config (prefer active, fallback to first)
+    config = db.query(LLMConfig).filter(
+        LLMConfig.user_id == current_user.id,
+        LLMConfig.is_active == 1
+    ).first()
+    if not config:
+        config = db.query(LLMConfig).filter(LLMConfig.user_id == current_user.id).first()
     if not config:
         raise AppException(code=4005, message="LLM config not set", status_code=400)
 

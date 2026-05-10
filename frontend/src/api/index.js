@@ -243,9 +243,11 @@ export function getBackgroundUrl(token) {
 }
 
 // --- LLM Config ---
-export const getLLMConfig = () => api.get('/llm-config')
+export const getLLMConfigs = () => api.get('/llm-config')
+export const getActiveLLMConfig = () => api.get('/llm-config/active')
 export const saveLLMConfig = (data) => api.post('/llm-config', data)
-export const deleteLLMConfig = () => api.delete('/llm-config')
+export const activateLLMProvider = (provider) => api.post(`/llm-config/${provider}/activate`)
+export const deleteLLMConfig = (provider) => api.delete(`/llm-config/${provider}`)
 
 // --- Chat Sessions ---
 export const getChatSessions = () => api.get('/chat-sessions')

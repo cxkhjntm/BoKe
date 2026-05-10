@@ -2,8 +2,8 @@
   <div class="chat-config-panel">
     <div class="config-summary" @click="expanded = !expanded">
       <div class="config-summary-text">
-        <span v-if="config" class="config-ok">
-          当前配置：{{ config.provider }} / {{ config.model }}
+        <span v-if="activeConfig" class="config-ok">
+          当前配置：{{ getProviderDisplayName(activeConfig.provider) }} / {{ activeConfig.model }}
         </span>
         <span v-else class="config-warn">
           未配置 API，点击展开设置
@@ -17,11 +17,36 @@
     <div v-if="expanded" class="config-form">
       <div class="form-row">
         <label>Provider</label>
-        <select v-model="form.provider" class="form-control">
+        <select v-model="form.provider" class="form-control" @change="onProviderChange">
           <option value="siliconflow">SiliconFlow</option>
           <option value="deepseek">DeepSeek</option>
+          <optgroup v-if="customProviders.length > 0" label="自定义">
+            <option v-for="cp in customProviders" :key="cp.id" :value="cp.id">
+              {{ cp.name }}
+            </option>
+          </optgroup>
         </select>
+        <button class="btn btn-sm btn-outline" @click="showAddForm = !showAddForm" :disabled="customProviders.length >= 8">
+          {{ showAddForm ? '取消' : '+ 添加' }}
+        </button>
       </div>
+
+      <div v-if="showAddForm" class="custom-provider-form">
+        <div class="form-row">
+          <label>名称</label>
+          <input v-model="newProvider.name" type="text" class="form-control" placeholder="例如：我的 OpenAI" />
+        </div>
+        <div class="form-row">
+          <label>Base URL</label>
+          <input v-model="newProvider.base_url" type="text" class="form-control" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-sm btn-primary" @click="addCustomProvider" :disabled="!newProvider.name || !newProvider.base_url">
+            确认添加
+          </button>
+        </div>
+      </div>
+
       <div class="form-row">
         <label>API Key</label>
         <input v-model="form.api_key" type="password" class="form-control" placeholder="sk-..." />
@@ -34,12 +59,23 @@
         <label>Model</label>
         <input v-model="form.model" type="text" class="form-control" placeholder="例如 deepseek-chat" />
       </div>
+
+      <div v-if="isCustomProvider" class="form-row">
+        <label></label>
+        <button class="btn btn-sm btn-danger" @click="removeCustomProvider(form.provider)">
+          删除此自定义 Provider
+        </button>
+      </div>
+
       <div class="form-actions">
         <button class="btn btn-sm btn-primary" @click="handleSave" :disabled="saving">
           {{ saving ? '保存中...' : '保存' }}
         </button>
+        <button v-if="!isActive" class="btn btn-sm btn-success" @click="handleActivate">
+          设为当前
+        </button>
         <button class="btn btn-sm" @click="handleCancel">取消</button>
-        <button v-if="config" class="btn btn-sm btn-danger" @click="handleDelete">清除配置</button>
+        <button v-if="currentConfig" class="btn btn-sm btn-danger" @click="handleDelete">删除配置</button>
       </div>
       <div v-if="error" class="config-error">{{ error }}</div>
     </div>
@@ -49,20 +85,26 @@
 <script setup>
 import { ref, watch, computed } from 'vue'
 
+const CUSTOM_PROVIDERS_KEY = 'boke_custom_llm_providers'
+const MAX_CUSTOM_PROVIDERS = 8
+
 const props = defineProps({
-  config: { type: Object, default: null },
+  configs: { type: Array, default: () => [] },
+  activeConfig: { type: Object, default: null },
   saving: { type: Boolean, default: false },
 })
-const emit = defineEmits(['save', 'cancel', 'delete'])
+const emit = defineEmits(['save', 'cancel', 'delete', 'activate'])
 
 const expanded = ref(false)
 const error = ref('')
+const showAddForm = ref(false)
 const form = ref({
   provider: 'siliconflow',
   api_key: '',
   base_url: '',
   model: '',
 })
+const newProvider = ref({ name: '', base_url: '' })
 
 const DEFAULT_BASE_URLS = {
   siliconflow: 'https://api.siliconflow.cn/v1',
@@ -72,8 +114,93 @@ const DEFAULT_BASE_URLS = {
 const FIXED_PROVIDERS = new Set(Object.keys(DEFAULT_BASE_URLS))
 
 const isFixedProvider = computed(() => FIXED_PROVIDERS.has(form.value.provider))
+const isCustomProvider = computed(() => !FIXED_PROVIDERS.has(form.value.provider))
 
-watch(() => props.config, (cfg) => {
+const currentConfig = computed(() => {
+  return props.configs.find(c => c.provider === form.value.provider)
+})
+
+const isActive = computed(() => {
+  return props.activeConfig && props.activeConfig.provider === form.value.provider
+})
+
+const customProviders = ref(loadCustomProviders())
+
+function loadCustomProviders() {
+  try {
+    const raw = localStorage.getItem(CUSTOM_PROVIDERS_KEY)
+    return raw ? JSON.parse(raw) : []
+  } catch {
+    return []
+  }
+}
+
+function saveCustomProviders(list) {
+  localStorage.setItem(CUSTOM_PROVIDERS_KEY, JSON.stringify(list))
+}
+
+function getProviderDisplayName(provider) {
+  if (provider === 'siliconflow') return 'SiliconFlow'
+  if (provider === 'deepseek') return 'DeepSeek'
+  const cp = customProviders.value.find(p => p.id === provider)
+  return cp ? cp.name : provider
+}
+
+function addCustomProvider() {
+  if (!newProvider.value.name.trim() || !newProvider.value.base_url.trim()) return
+  if (customProviders.value.length >= MAX_CUSTOM_PROVIDERS) {
+    error.value = `自定义 Provider 上限为 ${MAX_CUSTOM_PROVIDERS} 个`
+    return
+  }
+  const id = 'custom_' + Date.now()
+  const entry = { id, name: newProvider.value.name.trim(), base_url: newProvider.value.base_url.trim() }
+  customProviders.value.push(entry)
+  saveCustomProviders(customProviders.value)
+  form.value.provider = id
+  form.value.base_url = entry.base_url
+  form.value.api_key = ''
+  form.value.model = ''
+  newProvider.value = { name: '', base_url: '' }
+  showAddForm.value = false
+}
+
+function removeCustomProvider(id) {
+  if (!confirm('确定删除此自定义 Provider？')) return
+  customProviders.value = customProviders.value.filter(p => p.id !== id)
+  saveCustomProviders(customProviders.value)
+  emit('delete', id)
+  form.value.provider = 'siliconflow'
+  loadProviderConfig('siliconflow')
+}
+
+function onProviderChange() {
+  loadProviderConfig(form.value.provider)
+}
+
+function loadProviderConfig(provider) {
+  const config = props.configs.find(c => c.provider === provider)
+  if (config) {
+    form.value = {
+      provider: config.provider,
+      api_key: config.api_key,
+      base_url: config.base_url,
+      model: config.model,
+    }
+  } else {
+    form.value = {
+      provider: provider,
+      api_key: '',
+      base_url: DEFAULT_BASE_URLS[provider] || '',
+      model: '',
+    }
+    if (!FIXED_PROVIDERS.has(provider)) {
+      const cp = customProviders.value.find(p => p.id === provider)
+      if (cp) form.value.base_url = cp.base_url
+    }
+  }
+}
+
+watch(() => props.activeConfig, (cfg) => {
   if (cfg) {
     form.value = {
       provider: cfg.provider || 'siliconflow',
@@ -85,12 +212,6 @@ watch(() => props.config, (cfg) => {
     form.value = { provider: 'siliconflow', api_key: '', base_url: '', model: '' }
   }
 }, { immediate: true })
-
-watch(() => form.value.provider, (provider) => {
-  if (FIXED_PROVIDERS.has(provider)) {
-    form.value.base_url = DEFAULT_BASE_URLS[provider]
-  }
-})
 
 function handleSave() {
   error.value = ''
@@ -105,6 +226,10 @@ function handleSave() {
   emit('save', { ...form.value })
 }
 
+function handleActivate() {
+  emit('activate', form.value.provider)
+}
+
 function handleCancel() {
   expanded.value = false
   error.value = ''
@@ -112,8 +237,8 @@ function handleCancel() {
 }
 
 function handleDelete() {
-  if (confirm('确定清除当前 API 配置吗？')) {
-    emit('delete')
+  if (confirm('确定删除当前 Provider 配置吗？')) {
+    emit('delete', form.value.provider)
   }
 }
 </script>
@@ -185,6 +310,36 @@ function handleDelete() {
 .config-error {
   font-size: 0.8125rem;
   color: var(--danger);
+}
+.btn-success {
+  background: var(--success);
+  color: white;
+}
+.btn-success:hover {
+  opacity: 0.9;
+}
+.custom-provider-form {
+  background: var(--bg-hover);
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  margin-top: 0.25rem;
+}
+.custom-provider-form .form-row {
+  margin-bottom: 0.5rem;
+}
+.custom-provider-form .form-row:last-of-type {
+  margin-bottom: 0;
+}
+.custom-provider-form .form-actions {
+  margin-top: 0.5rem;
+}
+select optgroup {
+  font-weight: bold;
+  color: var(--text-secondary);
+}
+select option[value="__add_new__"] {
+  color: var(--primary);
+  font-style: italic;
 }
 @media (max-width: 640px) {
   .form-row {
