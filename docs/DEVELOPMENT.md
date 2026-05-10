@@ -11,16 +11,22 @@
 | 认证 | PyJWT + pwdlib[bcrypt] | >=2.8,<3.0 + >=0.3,<1.0 |
 | 任务队列 | Celery + Redis | celery[redis]>=5.3,<6.0; redis>=5.0,<6.0 |
 | 文件处理 | python-multipart, Pillow, PyMuPDF, python-docx, python-magic | Pillow>=10.0,<11.0; PyMuPDF>=1.23,<2.0; python-docx>=1.0,<2.0; python-magic>=0.4,<1.0 |
-| 前端 | Vue3 + Vite | 3.x |
+| LLM 集成 | openai, sse-starlette, httpx | openai>=1.30,<2.0; sse-starlette>=2.1,<3.0 |
+| RAG | chromadb, langchain-text-splitters | chromadb>=0.5,<1.0; langchain-text-splitters>=0.2,<1.0 |
+| 加密 | cryptography (Fernet) | >=42.0,<43.0 |
+| 文件锁 | filelock | >=3.13,<4.0 |
+| 前端 | Vue3 + Vite, Pinia, Vue Router, axios, marked, dompurify, lucide-vue-next | Vue>=3.4, Vite>=5.4 |
 | 反向代理 | Nginx | 1.24+ |
 
 ## 2. 项目目录结构
 
 ```
 BoKe/
-├── README.md
+├── README.md / README_CN.md
+├── DEPLOYMENT.md                # 部署文档
 ├── docs/
 │   └── DEVELOPMENT.md          # 本文档
+├── .env.example                 # 环境变量模板
 ├── requirements.txt
 ├── run.sh
 ├── nginx.conf
@@ -29,7 +35,6 @@ BoKe/
 │   ├── env.py
 │   ├── script.py.mako
 │   └── versions/
-│       └── 001_initial.py
 ├── backend/
 │   ├── __init__.py
 │   ├── main.py                  # FastAPI app 入口
@@ -39,22 +44,37 @@ BoKe/
 │   ├── tasks.py                 # Celery 异步任务
 │   ├── models/
 │   │   ├── __init__.py
-│   │   ├── user.py              # 用户模型
+│   │   ├── user.py              # 用户模型（含头像、背景、轮播设置）
 │   │   ├── document.py          # 文档模型
-│   │   └── api_key.py           # API Key 模型
+│   │   ├── api_key.py           # API Key 模型
+│   │   ├── refresh_token.py     # Refresh Token 模型
+│   │   ├── chat_session.py      # 聊天会话模型
+│   │   ├── llm_config.py        # LLM 配置模型
+│   │   ├── embedding_config.py  # Embedding 配置模型
+│   │   ├── rag_config.py        # RAG 配置模型
+│   │   ├── user_background.py   # 用户背景图模型
+│   │   └── activity.py          # 活动记录模型
 │   ├── schemas/
 │   │   ├── __init__.py
 │   │   ├── common.py            # 统一返回结构
-│   │   ├── user.py
-│   │   ├── document.py
-│   │   └── api_key.py
+│   │   ├── user.py              # 用户相关 Schema
+│   │   ├── document.py          # 文档相关 Schema
+│   │   ├── api_key.py           # API Key Schema
+│   │   ├── chat.py              # 聊天相关 Schema
+│   │   ├── llm_config.py        # LLM 配置 Schema
+│   │   └── rag.py               # RAG 配置 Schema
 │   ├── routers/
 │   │   ├── __init__.py
-│   │   ├── auth.py              # 登录 / 刷新 Token
-│   │   ├── documents.py         # 文档 CRUD
+│   │   ├── auth.py              # 登录 / 刷新 Token / 登出
+│   │   ├── documents.py         # 文档 CRUD + 收藏 + 分类
 │   │   ├── search.py            # 搜索接口
 │   │   ├── files.py             # 文件访问（鉴权后返回文件）
-│   │   ├── chat.py              # LLM 预留
+│   │   ├── chat.py              # LLM 聊天接口（SSE 流式响应）
+│   │   ├── chat_sessions.py     # 聊天会话管理
+│   │   ├── llm_config.py        # LLM 配置管理
+│   │   ├── rag_config.py        # RAG 配置管理
+│   │   ├── profile.py           # 用户资料管理（头像、背景、设置）
+│   │   ├── dashboard.py         # 仪表盘数据
 │   │   ├── milvus.py            # Milvus 预留
 │   │   ├── api_keys.py          # API Key 管理
 │   │   ├── admin.py             # 管理接口（FTS 重建等）
@@ -66,34 +86,50 @@ BoKe/
 │   │   ├── file_service.py      # 文件存储操作
 │   │   ├── extract_service.py   # 文本提取（PDF/DOCX/MD）
 │   │   ├── thumbnail_service.py # 缩略图生成（全类型）
-│   │   └── processing_service.py # 文档处理管线（文本提取+缩略图编排）
+│   │   ├── processing_service.py # 文档处理管线
+│   │   ├── chat_service.py      # LLM 聊天服务
+│   │   ├── chat_storage.py      # 聊天历史存储（文件锁）
+│   │   ├── llm_client.py        # LLM API 客户端（OpenAI 兼容）
+│   │   ├── rag_service.py       # RAG 向量检索服务
+│   │   └── dashboard_service.py # 仪表盘统计服务
 │   ├── middleware/
 │   │   ├── __init__.py
-│   │   ├── auth.py              # JWT 中间件（含审计日志）
+│   │   ├── auth.py              # JWT + API Key 中间件
 │   │   ├── logging.py           # 请求日志中间件
-│   │   └── rate_limit.py        # 限流中间件（含 X-RateLimit 头）
+│   │   └── rate_limit.py        # 限流中间件
 │   ├── utils/
 │   │   ├── __init__.py
 │   │   ├── response.py          # 统一响应工具
-│   │   ├── security.py          # 密码哈希、JWT 工具
+│   │   ├── security.py          # 密码哈希、JWT、API Key 工具
+│   │   ├── crypto_utils.py      # Fernet 加密（API Key 存储）
 │   │   └── logger.py            # 日志配置
 │   └── exceptions/
 │       ├── __init__.py
-│       └── handlers.py          # 统一异常处理（含日志）
+│       └── handlers.py          # 统一异常处理
 ├── tests/
 │   ├── __init__.py
-│   ├── conftest.py              # 测试 fixtures（DB、客户端、认证、样本文件）
+│   ├── conftest.py              # 测试 fixtures
 │   ├── services/
-│   │   ├── __init__.py
 │   │   ├── test_auth_service.py
 │   │   ├── test_extract_service.py
 │   │   ├── test_file_service.py
-│   │   └── test_processing_service.py
-│   └── api/
-│       ├── __init__.py
-│       ├── test_auth.py
-│       ├── test_documents.py
-│       └── test_health.py
+│   │   ├── test_processing_service.py
+│   │   ├── test_chat_storage.py
+│   │   ├── test_dashboard_service.py
+│   │   ├── test_document_service.py
+│   │   └── test_chat_service.py
+│   ├── api/
+│   │   ├── test_auth.py
+│   │   ├── test_documents.py
+│   │   ├── test_health.py
+│   │   ├── test_chat.py
+│   │   ├── test_chat_sessions.py
+│   │   ├── test_dashboard.py
+│   │   ├── test_llm_config.py
+│   │   ├── test_profile.py
+│   │   └── test_backgrounds.py
+│   └── utils/
+│       └── test_crypto_utils.py
 ├── frontend/
 │   ├── package.json
 │   ├── vite.config.js
@@ -101,26 +137,48 @@ BoKe/
 │   ├── src/
 │   │   ├── main.js
 │   │   ├── App.vue
+│   │   ├── style.css
 │   │   ├── router/
 │   │   │   └── index.js
 │   │   ├── stores/
-│   │   │   └── auth.js
+│   │   │   ├── auth.js          # 认证状态（token、用户信息、背景）
+│   │   │   ├── chat.js          # 聊天状态（会话列表、消息）
+│   │   │   └── ragConfig.js     # RAG 配置状态
 │   │   ├── api/
-│   │   │   └── index.js         # axios 封装
+│   │   │   ├── index.js         # axios 封装 + 拦截器
+│   │   │   └── ragConfig.js     # RAG 配置 API
 │   │   ├── views/
-│   │   │   ├── Login.vue
-│   │   │   ├── Upload.vue
-│   │   │   ├── Documents.vue
-│   │   │   └── Reader.vue
-│   │   └── components/
-│   │       ├── Navbar.vue
-│   │       └── SearchBar.vue
+│   │   │   ├── Login.vue        # 登录页
+│   │   │   ├── Dashboard.vue    # 仪表盘
+│   │   │   ├── Documents.vue    # 文档列表
+│   │   │   ├── Reader.vue       # 文档阅读器
+│   │   │   ├── Chat.vue         # LLM 聊天
+│   │   │   ├── Categories.vue   # 分类管理
+│   │   │   ├── Favorites.vue    # 收藏列表
+│   │   │   └── RAGSettings.vue  # RAG 设置
+│   │   ├── components/
+│   │   │   ├── AppNavbar.vue    # 导航栏
+│   │   │   ├── SearchBar.vue    # 搜索栏
+│   │   │   ├── SettingsModal.vue # 设置弹窗（头像、背景、轮播）
+│   │   │   ├── SettingsDropdown.vue # 设置下拉菜单
+│   │   │   ├── StatsCard.vue    # 统计卡片
+│   │   │   ├── RecentDocs.vue   # 最近文档
+│   │   │   ├── FavoritesTimeline.vue # 收藏时间线
+│   │   │   ├── ActivityTimeline.vue # 活动时间线
+│   │   │   └── chat/
+│   │   │       ├── ChatSidebar.vue      # 聊天侧边栏
+│   │   │       ├── ChatMessageList.vue  # 消息列表
+│   │   │       ├── ChatInput.vue        # 输入框
+│   │   │       ├── ChatConfigPanel.vue  # 配置面板
+│   │   │       └── ChatEmptyState.vue   # 空状态
+│   │   └── utils/
+│   │       └── format.js        # 格式化工具
 │   └── public/
 └── storage/                     # 运行时生成，不入 Git
     └── {user_id}/
         ├── original/
-        ├── processed/
-        └── thumbnails/
+        ├── thumbnails/
+        └── profile/             # 头像、背景图
 ```
 
 ## 3. 环境变量清单
@@ -137,11 +195,16 @@ BoKe/
 | STORAGE_PATH | 文件存储根路径 | ./storage | ./storage |
 | MAX_UPLOAD_SIZE_MB | 最大上传文件大小(MB) | 50 | 50 |
 | ALLOWED_EXTENSIONS | 允许的文件扩展名 | pdf,docx,md,png,jpg,jpeg | pdf,docx,md,png,jpg,jpeg |
+| IMAGE_MAX_UPLOAD_SIZE_MB | 最大图片上传大小(MB) | 2 | 2 |
+| IMAGE_ALLOWED_EXTENSIONS | 允许的图片扩展名 | png,jpg,jpeg,webp,gif | png,jpg,jpeg,webp,gif |
 | LOG_LEVEL | 日志级别 | INFO | INFO |
 | CORS_ORIGINS | 允许的跨域来源 | http://localhost:5173 | http://localhost:5173 |
 | RATE_LIMIT_LOGIN | 登录限流(次/分钟/IP) | 5 | 5 |
 | REGISTRATION_ENABLED | 是否开放注册 | false | false |
-| REDIS_URL | Redis 连接地址 (Celery broker + result backend) | redis://localhost:6379/0 | redis://localhost:6379/0 |
+| REDIS_URL | Redis 连接地址 | redis://localhost:6379/0 | redis://localhost:6379/0 |
+| CHAT_MAX_TIMEOUT | LLM 响应超时(秒) | 120 | 120 |
+| CHAT_MAX_MESSAGE_LENGTH | 单条消息最大长度 | 8000 | 8000 |
+| CHAT_RATE_LIMIT_PER_MINUTE | 聊天请求限流(次/分钟/用户) | 20 | 20 |
 
 ## 4. 数据库 Schema
 
@@ -156,6 +219,11 @@ CREATE TABLE users (
     is_active           BOOLEAN DEFAULT TRUE,
     login_failures      INTEGER DEFAULT 0,
     locked_until        DATETIME,
+    avatar_path         VARCHAR(500),
+    background_path     VARCHAR(500),
+    background_opacity  FLOAT DEFAULT 0.3,
+    max_rounds          INTEGER DEFAULT 10,
+    carousel_interval   INTEGER DEFAULT 5,
     created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP
 );
@@ -266,7 +334,7 @@ CREATE INDEX idx_api_keys_user_id ON api_keys(user_id);
 CREATE TABLE refresh_tokens (
     id          INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id     INTEGER NOT NULL REFERENCES users(id),
-    jti         VARCHAR(36) UNIQUE NOT NULL,       -- JWT ID (UUID)，用于精确匹配和撤销
+    jti         VARCHAR(36) UNIQUE NOT NULL,
     expires_at  DATETIME NOT NULL,
     revoked     BOOLEAN DEFAULT FALSE,
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -274,6 +342,97 @@ CREATE TABLE refresh_tokens (
 
 CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX idx_refresh_tokens_jti ON refresh_tokens(jti);
+```
+
+### 4.6 chat_sessions 表
+
+```sql
+CREATE TABLE chat_sessions (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    session_id  VARCHAR(36) UNIQUE NOT NULL,
+    title       VARCHAR(200) NOT NULL DEFAULT '新会话',
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_chat_sessions_user_id ON chat_sessions(user_id);
+```
+
+### 4.7 llm_configs 表
+
+```sql
+CREATE TABLE llm_configs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    provider    VARCHAR(20) NOT NULL,
+    api_key     VARCHAR(500) NOT NULL,       -- Fernet 加密存储
+    base_url    VARCHAR(500) NOT NULL,
+    model       VARCHAR(100) NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 4.8 embedding_configs 表
+
+```sql
+CREATE TABLE embedding_configs (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    provider    VARCHAR(20) NOT NULL,
+    api_key     VARCHAR(500) NOT NULL,
+    base_url    VARCHAR(500) NOT NULL,
+    model       VARCHAR(100) NOT NULL,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 4.9 rag_configs 表
+
+```sql
+CREATE TABLE rag_configs (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id             INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+    chunk_size           INTEGER DEFAULT 500,
+    chunk_overlap        INTEGER DEFAULT 50,
+    top_k               INTEGER DEFAULT 5,
+    score_threshold     FLOAT DEFAULT 0.7,
+    created_at          DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at          DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
+
+### 4.10 user_backgrounds 表
+
+```sql
+CREATE TABLE user_backgrounds (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    image_path  VARCHAR(500) NOT NULL,
+    position    INTEGER NOT NULL DEFAULT 0,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_user_backgrounds_user_id ON user_backgrounds(user_id);
+```
+
+### 4.11 activities 表
+
+```sql
+CREATE TABLE activities (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    action      VARCHAR(50) NOT NULL,
+    target_type VARCHAR(50),
+    target_id   INTEGER,
+    metadata    TEXT,
+    created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_activities_user_id ON activities(user_id);
+CREATE INDEX idx_activities_created_at ON activities(created_at);
 ```
 
 ## 5. API 规范
@@ -457,12 +616,13 @@ POST /api/v1/admin/fts-rebuild
 #### 预留接口
 
 ```
-GET /api/v1/chat/
-  Response: { "code": 5010, "message": "LLM integration is not available yet.", "data": null }
-
 GET /api/v1/milvus/status
   Response: { "code": 0, "message": "ok", "data": { "status": "not_configured" } }
+```
 
+#### API Key 管理
+
+```
 GET /api/v1/api-keys
   Header: Authorization: Bearer <access_token>
   Response: { "code": 0, "message": "ok", "data": { "items": [...] } }
@@ -477,23 +637,161 @@ DELETE /api/v1/api-keys/{id}
   Response: { "code": 0, "message": "ok", "data": null }
 ```
 
+#### 用户资料
+
+```
+GET /api/v1/profile
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": { "id": 1, "username": "admin", "avatar_path": "...", ... } }
+
+PUT /api/v1/profile
+  Header: Authorization: Bearer <access_token>
+  Body: { "background_opacity": 0.5, "max_rounds": 15, "carousel_interval": 10 }
+  Response: { "code": 0, "message": "ok", "data": { ... } }
+
+POST /api/v1/profile/avatar
+  Header: Authorization: Bearer <access_token>
+  Body: multipart/form-data { file: <binary> }
+  Response: { "code": 0, "message": "ok", "data": { "avatar_path": "..." } }
+
+DELETE /api/v1/profile/avatar
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": { ... } }
+
+GET /api/v1/profile/backgrounds
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": [{ "id": 1, "image_path": "...", "position": 0 }, ...] }
+
+POST /api/v1/profile/backgrounds
+  Header: Authorization: Bearer <access_token>
+  Body: multipart/form-data { file: <binary> }
+  Response: { "code": 0, "message": "ok", "data": { "id": 1, "image_path": "..." } }
+
+DELETE /api/v1/profile/backgrounds/{id}
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": null }
+
+PUT /api/v1/profile/backgrounds/reorder
+  Header: Authorization: Bearer <access_token>
+  Body: { "background_ids": [3, 1, 2] }
+  Response: { "code": 0, "message": "ok", "data": [...] }
+```
+
+#### 仪表盘
+
+```
+GET /api/v1/dashboard/stats
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": { "total_documents": 42, "total_size": 1024000, ... } }
+
+GET /api/v1/dashboard/recent
+  Header: Authorization: Bearer <access_token>
+  Query: limit=5
+  Response: { "code": 0, "message": "ok", "data": [{ "id": 1, "title": "...", ... }, ...] }
+
+GET /api/v1/dashboard/top
+  Header: Authorization: Bearer <access_token>
+  Query: limit=5
+  Response: { "code": 0, "message": "ok", "data": [...] }
+
+GET /api/v1/dashboard/activity
+  Header: Authorization: Bearer <access_token>
+  Query: limit=10
+  Response: { "code": 0, "message": "ok", "data": [...] }
+```
+
+#### LLM 聊天
+
+```
+GET /api/v1/chat/
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": { "status": "available" } }
+
+POST /api/v1/chat/messages/{session_id}
+  Header: Authorization: Bearer <access_token>
+  Body: { "content": "请总结这篇文档" }
+  Response: SSE stream (data: {...}\n\n)
+  注: 流式响应，前端使用 ReadableStream 处理
+```
+
+#### 聊天会话管理
+
+```
+GET /api/v1/chat-sessions
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": [{ "id": 1, "session_id": "uuid", "title": "...", ... }, ...] }
+
+POST /api/v1/chat-sessions
+  Header: Authorization: Bearer <access_token>
+  Body: { "title": "新会话" }
+  Response: { "code": 0, "message": "ok", "data": { "id": 1, "session_id": "uuid", ... } }
+
+PATCH /api/v1/chat-sessions/{session_id}
+  Header: Authorization: Bearer <access_token>
+  Body: { "title": "新标题" }
+  Response: { "code": 0, "message": "ok", "data": { ... } }
+
+DELETE /api/v1/chat-sessions/{session_id}
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": null }
+
+GET /api/v1/chat/messages/{session_id}
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": [{ "role": "user", "content": "..." }, ...] }
+```
+
+#### LLM 配置
+
+```
+GET /api/v1/llm-config
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": { "provider": "openai", "model": "gpt-4", ... } }
+
+POST /api/v1/llm-config
+  Header: Authorization: Bearer <access_token>
+  Body: { "provider": "openai", "api_key": "sk-xxx", "base_url": "https://api.openai.com/v1", "model": "gpt-4" }
+  Response: { "code": 0, "message": "ok", "data": { ... } }
+
+DELETE /api/v1/llm-config
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": null }
+```
+
+#### RAG 配置
+
+```
+GET /api/v1/rag-config
+  Header: Authorization: Bearer <access_token>
+  Response: { "code": 0, "message": "ok", "data": { "chunk_size": 500, "top_k": 5, ... } }
+
+POST /api/v1/rag-config
+  Header: Authorization: Bearer <access_token>
+  Body: { "chunk_size": 500, "chunk_overlap": 50, "top_k": 5, "score_threshold": 0.7 }
+  Response: { "code": 0, "message": "ok", "data": { ... } }
+```
+
 ## 6. 安全策略
 
 ### 6.1 密码存储
-- 算法: bcrypt (passlib[bcrypt])
+- 算法: bcrypt (pwdlib[bcrypt])
 - 轮数: 12
 
 ### 6.2 JWT 策略
-- Access Token: 30 分钟过期
-- Refresh Token: 7 天过期
+- Access Token: 30 分钟过期 (可通过环境变量配置)
+- Refresh Token: 7 天过期 (可通过环境变量配置)
 - 签名算法: HS256
 - Payload: { "sub": user_id, "type": "access"|"refresh", "iat": ..., "exp": ..., "jti": "uuid" }
 - Refresh Token 数据库存储 `jti`（JWT ID），支持精确撤销
 - **Token 轮换**: 每次刷新时，旧 Refresh Token 标记 revoked=TRUE，同时签发新 Token
 - **Token Family 检测**: 若检测到已撤销的 Refresh Token 被使用，立即撤销该用户所有 Refresh Token
-- **登出**: 撤销对应 Refresh Token；Access Token 在过期前仍有效（已知限制，单用户系统风险可接受）
+- **登出**: 撤销对应 Refresh Token；Access Token 在过期前仍有效
 - **JWT_SECRET_KEY**: 至少 256 位随机字符串，使用 `openssl rand -hex 32` 生成，启动时校验长度 >= 32 字节
-- **密钥轮换**: 文档说明策略，当前不实现（后续可通过双密钥方案支持）
+
+### 6.3 API Key 加密
+- LLM API Key 使用 Fernet 对称加密存储 (cryptography 库)
+- 加密密钥由系统生成并存储在环境变量或配置文件中
+- 数据库中存储加密后的密文，解密仅在需要调用 LLM 时进行
+- 代码位置: backend/utils/crypto_utils.py
 
 ### 6.3 文件上传安全（三层校验）
 - 第一层: 扩展名白名单 (pdf, docx, md, png, jpg, jpeg)
@@ -564,21 +862,32 @@ DELETE /api/v1/api-keys/{id}
 
 ### 9.1 Milvus 向量检索
 - 预留接口: GET /api/v1/milvus/status → {"status": "not_configured"}
-- 代码位置: backend/services/vector_service.py (TODO: 未来实现)
+- 代码位置: backend/services/rag_service.py (当前使用 ChromaDB)
 - 文档入库时，可异步调用 embedding 服务生成向量
 
-### 9.2 LLM 文档问答
-- 预留接口: GET /api/v1/chat/ → {"code": 5010, "message": "LLM integration is not available yet."}
-- 代码位置: backend/services/chat_service.py (TODO: 未来实现)
-- 接收问题 + 文档 ID，返回回答
+### 9.2 LLM 文档问答 (已实现)
+- 聊天接口: POST /api/v1/chat/messages/{session_id} (SSE 流式响应)
+- 支持 OpenAI 兼容 API (openai, deepseek, siliconflow 等)
+- 配置管理: /api/v1/llm-config (CRUD)
+- 聊天历史: 文件存储 + filelock (backend/services/chat_storage.py)
+- LLM 客户端: backend/services/llm_client.py (httpx 流式调用)
+- 前端: Chat.vue + ChatSidebar + ChatMessageList + ChatInput
 
-### 9.3 API Key 管理
+### 9.3 RAG 向量检索 (已实现)
+- 使用 ChromaDB 作为向量数据库
+- 文本分割: langchain-text-splitters
+- 配置管理: /api/v1/rag-config
+- Embedding 配置: /api/v1/embedding-config (如有)
+- 服务层: backend/services/rag_service.py
+
+### 9.4 API Key 管理
 - 完整 CRUD 已实现 (model + schema + router)
 - API Key 鉴权已接入 middleware (Authorization: Bearer sk-xxx)
 - 支持过期时间、活跃状态检查、last_used_at 自动更新
 - API Key 以 SHA256 哈希存储，原始 key 仅创建时返回一次
+- LLM API Key 使用 Fernet 加密存储 (backend/utils/crypto_utils.py)
 
-### 9.4 异步任务队列 (Celery + Redis)
+### 9.5 异步任务队列 (Celery + Redis)
 - Celery 应用: `backend/celery_app.py`，Redis 作为 broker 和 result backend
 - Celery 任务: `backend/tasks.py`，`process_document_task(document_id)` 创建独立 DB session
 - 路由层通过 `_dispatch_processing()` 分发任务，Redis 不可用时自动回退同步处理
@@ -587,6 +896,28 @@ DELETE /api/v1/api-keys/{id}
 - 前端轮询: Documents.vue 和 Reader.vue 在 `queued`/`processing` 状态下每 3 秒刷新
 - run.sh 自动检测 Redis 可用性，可用时启动 Celery worker 后台进程
 - 健康检查: `/api/v1/health` 返回 `redis: "ok" | "unavailable" | "not_configured"`
+
+### 9.6 用户个性化 (已实现)
+- 头像上传/删除: /api/v1/profile/avatar
+- 背景图管理: 最多 10 张，支持轮播
+- 轮播间隔配置: carousel_interval (1-60 秒)
+- 背景透明度: background_opacity (0-1)
+- 消息轮数上限: max_rounds (0=无限制)
+- 前端: SettingsModal.vue
+
+### 9.7 仪表盘 (已实现)
+- 统计数据: /api/v1/dashboard/stats
+- 最近文档: /api/v1/dashboard/recent
+- 热门文档: /api/v1/dashboard/top
+- 活动时间线: /api/v1/dashboard/activity
+- 前端: Dashboard.vue + StatsCard + RecentDocs + ActivityTimeline
+
+### 9.8 文档分类与收藏 (已实现)
+- 收藏切换: PATCH /api/v1/documents/{id}/favorite
+- 分类设置: PATCH /api/v1/documents/{id}/category
+- 分类列表: GET /api/v1/documents/categories
+- 收藏列表: GET /api/v1/documents?is_favorite=true
+- 前端: Favorites.vue, Categories.vue
 
 ```
 Upload Request
@@ -682,11 +1013,23 @@ tests/
 │   ├── test_auth_service.py     # 认证、Token 刷新、登出、账户锁定
 │   ├── test_extract_service.py  # PDF/DOCX/MD 文本提取
 │   ├── test_file_service.py     # 文件保存/删除/路径遍历防护
-│   └── test_processing_service.py # 处理管线（成功/失败/部分成功）
-└── api/                     # API 集成测试
-    ├── test_auth.py             # 登录/刷新/登出端点
-    ├── test_documents.py        # 文档 CRUD + 上传 + 重试
-    └── test_health.py           # 健康检查端点
+│   ├── test_processing_service.py # 处理管线
+│   ├── test_chat_storage.py     # 聊天历史存储
+│   ├── test_dashboard_service.py # 仪表盘统计
+│   ├── test_document_service.py # 文档业务逻辑
+│   └── test_chat_service.py     # LLM 聊天服务
+├── api/                     # API 集成测试
+│   ├── test_auth.py             # 登录/刷新/登出端点
+│   ├── test_documents.py        # 文档 CRUD + 上传 + 重试
+│   ├── test_health.py           # 健康检查端点
+│   ├── test_chat.py             # LLM 聊天端点
+│   ├── test_chat_sessions.py    # 聊天会话管理
+│   ├── test_dashboard.py        # 仪表盘端点
+│   ├── test_llm_config.py       # LLM 配置端点
+│   ├── test_profile.py          # 用户资料端点
+│   └── test_backgrounds.py      # 背景图管理端点
+└── utils/                   # 工具函数测试
+    └── test_crypto_utils.py     # Fernet 加密/解密
 ```
 
 ### 11.4 测试 Fixtures
@@ -712,46 +1055,43 @@ tests/
 
 ## 12. 开发阶段划分
 
-### 阶段 A: 核心后端系统
+### 阶段 A: 核心后端系统 ✅
 - FastAPI 项目结构
-- JWT + Refresh Token
-- 文档上传 (安全校验)
+- JWT + Refresh Token (Token 轮换 + Family 检测)
+- 文档上传 (三层安全校验)
 - SQLite + Alembic
 - 文档 CRUD
 
-### 阶段 B: 内容处理 + 搜索
+### 阶段 B: 内容处理 + 搜索 ✅
 - PDF/DOCX/Markdown 文本提取 (extract_service)
-- 全类型缩略图生成 (thumbnail_service: PDF/图片实际渲染, DOCX/MD 带标签图标)
-- 文档处理管线模块化 (processing_service: 独立错误隔离, Celery 兼容)
-- FTS5 全文搜索 + 查询安全增强 (短语搜索, 控制字符过滤)
+- 全类型缩略图生成 (thumbnail_service)
+- 文档处理管线模块化 (processing_service)
+- FTS5 全文搜索 + 查询安全增强
 - 文档重试机制 (POST /documents/{id}/retry)
 - 管理接口 (POST /admin/fts-rebuild)
-- status 字段完整生命周期 (queued -> processing -> ready / error)
 
-### 阶段 C: 异步任务队列
+### 阶段 C: 异步任务队列 ✅
 - Celery + Redis 异步文档处理
-- 文档状态机: queued → processing → ready / error
 - Redis 不可用时自动回退同步处理
 - 前端轮询状态更新 (3 秒间隔)
 - run.sh 自动检测 Redis + 启动 Celery worker
 
-### 阶段 D: 可观测性 + 测试 + 安全加固
+### 阶段 D: 可观测性 + 测试 + 安全加固 ✅
 - 请求日志中间件 (X-Request-ID 关联)
 - 认证失败审计日志
-- AppException 日志 (4xx WARNING / 5xx ERROR)
-- HTTPException 统一响应格式
 - 限流响应头 (X-RateLimit-Limit / X-RateLimit-Remaining)
-- pytest 测试基础设施 (52 个测试, 覆盖率 >= 60%)
-- 服务层单元测试 (extract, file, processing, auth)
-- API 集成测试 (health, auth, documents)
+- pytest 测试基础设施
+- 服务层单元测试 + API 集成测试
 
-### 阶段 E: 前端 + 扩展 + 部署
-- Vue3 + Vite 前端 (Pinia 状态管理, Vue Router, axios 封装)
-- 登录页 / 文档列表(含状态标签+重试) / 文档阅读(PDF/图片/Markdown)
-- 搜索功能 (FTS5 集成, URL query 参数驱动)
-- API Key 鉴权接入 middleware (JWT + API Key 双重支持)
-- 预留接口保持 placeholder (chat 5010, milvus not_configured)
-- nginx.conf 生产反代 (/storage/ 代理到后鉴权后端)
-- run.sh 一键启动 (自动构建前端 + 启动后端)
-- FastAPI SPA fallback (前端静态文件直接由后端服务)
-- README.md 项目文档
+### 阶段 E: 前端 + LLM + RAG + 用户系统 ✅
+- Vue3 + Vite 前端 (Pinia, Vue Router, axios)
+- 登录页 / 仪表盘 / 文档列表 / 文档阅读器
+- LLM 聊天功能 (SSE 流式响应, OpenAI 兼容)
+- RAG 向量检索 (ChromaDB + langchain-text-splitters)
+- 聊天会话管理 (CRUD + 历史存储)
+- LLM/RAG 配置管理
+- 用户资料 (头像、背景图、轮播、透明度)
+- 文档收藏 + 分类
+- API Key 鉴权 (JWT + API Key 双重支持)
+- nginx.conf 生产反代
+- run.sh 一键启动
