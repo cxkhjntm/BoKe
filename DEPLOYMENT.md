@@ -268,13 +268,15 @@ sudo systemctl start redis
 ### 4.3 设置开机自启
 
 ```bash
-sudo systemctl enable redis
+sudo systemctl enable redis-server
 ```
+
+> **注意：** 在某些系统上（如 Ubuntu），Redis 的服务名为 `redis-server` 而非 `redis`。如果执行 `sudo systemctl enable redis` 提示找不到服务，请改用 `sudo systemctl enable redis-server`。
 
 预期输出：
 
 ```
-Created symlink /etc/systemd/system/multi-user.target.wants/redis.service → /lib/systemd/system/redis.service.
+Created symlink /etc/systemd/system/multi-user.target.wants/redis-server.service → /lib/systemd/system/redis-server.service.
 ```
 
 ### 4.4 验证 Redis
@@ -414,6 +416,12 @@ ls -la
 ```bash
 cp .env.example .env
 ```
+
+> **注意：** 如果提示 `.env.example` 文件不存在，可能是因为以 `.` 开头的文件默认被隐藏。使用 `ls -la` 查看所有文件（包括隐藏文件）。如果文件确实丢失，可以通过 Git 恢复：
+>
+> ```bash
+> git checkout -- .env.example
+> ```
 
 ### 6.3 生成 JWT 密钥
 
@@ -691,6 +699,10 @@ sudo cp ~/BoKe/nginx.conf /etc/nginx/sites-available/boke
 sudo nano /etc/nginx/sites-available/boke
 ```
 
+> **nano 编辑器操作提示：**
+> - **保存文件：** 按 `Ctrl + O`（字母 O，不是数字 0），然后按 `Enter` 确认文件名（保持原文件名不变）。
+> - **退出编辑器：** 按 `Ctrl + X`。
+
 需要修改两个地方：
 
 **1. 修改 `server_name`**
@@ -914,6 +926,8 @@ sudo systemctl status boke-celery
 ---
 
 ## 第十三章：防火墙配置
+
+> **提示：** 如果你使用的是阿里云、腾讯云、华为云等云服务器厂商，通常默认已经配置好了安全组规则（放行 22、80、443 端口），可以跳过本章。如有需要，请到云服务器控制台的安全组中确认规则。
 
 ### 13.1 UFW（Ubuntu / Debian）
 
@@ -1213,6 +1227,15 @@ alembic upgrade head 2>&1
 
 3. **alembic.ini 路径问题：** 确保在项目根目录运行命令
 
+4. **模块导入路径问题：** 如果报错 `ModuleNotFoundError` 或类似路径错误，可能是 alembic 无法找到项目模块。执行以下命令修复 `alembic/env.py` 文件：
+   ```bash
+   sed -i '1i import sys\nimport os\nsys.path.append(os.path.dirname(os.path.dirname(__file__)))\n' alembic/env.py
+   ```
+   修复后重新运行：
+   ```bash
+   alembic upgrade head
+   ```
+
 ### 15.7 Nginx 502 Bad Gateway
 
 **症状：** 访问网站显示 502 错误。
@@ -1264,6 +1287,30 @@ CORS_ORIGINS=http://域名A,http://域名B
 ```bash
 sudo systemctl restart boke
 ```
+
+### 15.9 访问服务器报 500 错误
+
+**症状：** Nginx 返回 500 Internal Server Error，Nginx 错误日志中出现 `Permission denied` 相关信息。
+
+**原因：** Nginx 的工作用户（通常是 `www-data`）没有权限访问项目目录或静态文件。
+
+**解决：** 执行以下命令修复权限：
+
+```bash
+# 1. 允许 www-data 用户进入 /home/ubuntu 目录（添加执行权限）
+sudo chmod 755 /home/ubuntu
+
+# 2. 递归授予 BoKe 目录读取和执行权限给其他用户
+sudo chmod -R 755 /home/ubuntu/BoKe
+
+# 3. 确保静态文件目录可读
+sudo chmod -R 755 /home/ubuntu/BoKe/frontend/dist
+
+# 4. 重新加载 Nginx
+sudo systemctl reload nginx
+```
+
+> **注意：** 请将 `/home/ubuntu` 替换为你实际的用户目录路径。如果你使用的用户名不是 `ubuntu`，请相应修改。
 
 ---
 
