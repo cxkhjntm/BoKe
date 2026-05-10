@@ -1,205 +1,285 @@
 # BoKe — Personal Research Portal
 
-A lightweight, secure personal knowledge management system for researchers.
+中文版本请查看 [README_CN.md](./README_CN.md)
+
+A self-hosted research material management system. Upload documents, search across your entire library, and interact with your knowledge base through an LLM-powered chat interface. Runs on a single machine with minimal setup.
+
+## Highlights
+
+- Document upload with automatic text extraction (PDF, DOCX, Markdown, images)
+- SQLite FTS5 full-text search across all documents
+- RAG pipeline with ChromaDB vector storage for context-aware chat
+- Dual authentication: JWT sessions and long-lived API keys
+- Async file processing via Celery with graceful degradation when Redis is unavailable
+- OpenAI-compatible LLM integration (bring your own API key)
+- Responsive Vue 3 SPA with a clean, distraction-free interface
 
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────┐
-│                   Nginx (80)                     │
-│   ┌──────────┐  ┌──────────┐  ┌──────────────┐  │
-│   │  Static   │  │  /api/*  │  │  /storage/*  │  │
-│   │  (Vue3)   │  │  proxy → │  │  proxy →     │  │
-│   └──────────┘  └────┬─────┘  └──────┬───────┘  │
-│                       │               │          │
-└───────────────────────┼───────────────┼──────────┘
-                        │               │
-               ┌────────▼───────────────▼────────┐
-               │      FastAPI Backend (8000)      │
-               │  ┌──────────┐  ┌──────────────┐ │
-               │  │   JWT    │  │  API Key     │ │
-               │  │   Auth   │  │  Auth        │ │
-               │  └──────────┘  └──────────────┘ │
-               │  ┌──────────┐  ┌──────────────┐ │
-               │  │ Document │  │  Processing  │ │
-               │  │  CRUD    │  │  Pipeline    │ │
-               │  └──────────┘  └──────────────┘ │
-               │  ┌──────────┐  ┌──────────────┐ │
-               │  │  FTS5    │  │   File       │ │
-               │  │  Search  │  │   Storage    │ │
-               │  └──────────┘  └──────────────┘ │
-               └───────────────┬─────────────────┘
-                               │
-               ┌───────────────▼─────────────────┐
-               │       SQLite + Alembic           │
-               │  (WAL mode, foreign keys ON)     │
-               └──────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                    Nginx (80)                     │
+│   ┌───────────┐  ┌───────────┐  ┌─────────────┐ │
+│   │  Static    │  │  /api/*   │  │  /storage/* │ │
+│   │  (Vue 3)   │  │  proxy →  │  │  proxy →    │ │
+│   └───────────┘  └─────┬─────┘  └──────┬──────┘ │
+│                         │               │        │
+└─────────────────────────┼───────────────┼────────┘
+                          │               │
+                 ┌────────▼───────────────▼────────┐
+                 │      FastAPI Backend (:8000)     │
+                 │                                  │
+                 │  ┌─────────┐    ┌─────────────┐ │
+                 │  │  JWT +   │    │   Document  │ │
+                 │  │  API Key │    │   CRUD      │ │
+                 │  └─────────┘    └─────────────┘ │
+                 │  ┌─────────┐    ┌─────────────┐ │
+                 │  │  FTS5    │    │  File Proc  │ │
+                 │  │  Search  │    │  Pipeline   │ │
+                 │  └─────────┘    └─────────────┘ │
+                 │  ┌─────────┐    ┌─────────────┐ │
+                 │  │  RAG +   │    │  Celery     │ │
+                 │  │  LLM     │    │  Tasks      │ │
+                 │  └─────────┘    └─────────────┘ │
+                 └────────────────┬─────────────────┘
+                                 │
+                 ┌───────────────▼─────────────────┐
+                 │   SQLite (WAL) + Alembic         │
+                 │   ChromaDB (vectors)             │
+                 │   Redis (optional task queue)    │
+                 └──────────────────────────────────┘
 ```
+
+## Tech Stack
+
+| Layer            | Technology                                          |
+| ---------------- | --------------------------------------------------- |
+| Frontend         | Vue 3, Vite, Pinia, Vue Router                      |
+| Backend          | Python 3.11+, FastAPI, SQLAlchemy, Pydantic         |
+| Database         | SQLite with WAL mode                                |
+| Migrations       | Alembic                                             |
+| Auth             | JWT (HS256) + API Key (SHA256)                      |
+| File Processing  | PyMuPDF (PDF), python-docx (DOCX), Pillow (images)  |
+| Task Queue       | Celery + Redis (optional)                           |
+| Search           | SQLite FTS5                                         |
+| RAG              | ChromaDB + langchain-text-splitters                 |
+| LLM Integration  | OpenAI-compatible API                               |
 
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
-- Node.js 18+ (for frontend build)
+- Node.js 18+
+- (Optional) Redis, if you want async task processing
 
-### 1. Clone and configure
+### Install
 
 ```bash
 git clone https://github.com/cxkhjntm/claude_code.git
 cd claude_code
 
-# Create .env from template
+# Create environment file
 cp .env.example .env
 
-# Edit .env — set at minimum:
+# Generate a secret key and set your admin password
+# Edit .env:
 #   JWT_SECRET_KEY=<openssl rand -hex 32>
 #   ADMIN_PASSWORD=<your-password>
 ```
 
-### 2. One-click start
+### Run
 
 ```bash
 bash run.sh
 ```
 
-This will:
-- Create Python virtual environment
-- Install all dependencies
-- Run database migrations
-- Build the Vue3 frontend
-- Start the FastAPI server
+This script creates a Python virtual environment, installs all dependencies, runs database migrations, builds the frontend, and starts the server.
 
-### 3. Access
+### Access
 
-- **Web UI**: http://localhost:8000
-- **API Docs**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/api/v1/health
+| Service      | URL                             |
+| ------------ | ------------------------------- |
+| Web UI       | http://localhost:8000           |
+| API Docs     | http://localhost:8000/docs      |
+| Health Check | http://localhost:8000/api/v1/health |
+
+## Environment Variables
+
+| Variable | Required | Default | Description |
+| -------- | -------- | ------- | ----------- |
+| `JWT_SECRET_KEY` | Yes | *none* | Signing key for JWT tokens. Minimum 32 characters. |
+| `ADMIN_PASSWORD` | Yes | *none* | Password for the initial admin account. |
+| `ADMIN_USERNAME` | No | `admin` | Username for the initial admin account. |
+| `DATABASE_URL` | No | `sqlite:///./data/app.db` | SQLAlchemy database connection string. |
+| `STORAGE_PATH` | No | `./storage` | Root directory for uploaded files. |
+| `MAX_UPLOAD_SIZE_MB` | No | `50` | Maximum document upload size in MB. |
+| `ALLOWED_EXTENSIONS` | No | `pdf,docx,md,png,jpg,jpeg` | Comma-separated list of allowed document extensions. |
+| `IMAGE_MAX_UPLOAD_SIZE_MB` | No | `2` | Maximum image upload size in MB. |
+| `IMAGE_ALLOWED_EXTENSIONS` | No | `png,jpg,jpeg,webp,gif` | Comma-separated list of allowed image extensions. |
+| `CORS_ORIGINS` | No | `http://localhost:5173` | Allowed CORS origins (comma-separated for multiple). |
+| `REDIS_URL` | No | `redis://localhost:6379/0` | Redis connection URL for Celery task queue. |
+| `RATE_LIMIT_LOGIN` | No | `5` | Max login attempts per minute per IP. |
+| `LOG_LEVEL` | No | `INFO` | Python logging level (DEBUG, INFO, WARNING, ERROR). |
+| `REGISTRATION_ENABLED` | No | `false` | Whether to allow new user registration. |
+| `CHAT_MAX_TIMEOUT` | No | `120` | Max seconds to wait for an LLM response. |
+| `CHAT_MAX_MESSAGE_LENGTH` | No | `8000` | Max character length for a single chat message. |
+| `CHAT_RATE_LIMIT_PER_MINUTE` | No | `20` | Max chat requests per minute per user. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | No | `30` | JWT access token lifetime in minutes. |
+| `REFRESH_TOKEN_EXPIRE_DAYS` | No | `7` | JWT refresh token lifetime in days. |
 
 ## API Reference
 
-### Authentication
+All endpoints are prefixed with `/api/v1`. Authentication uses either a JWT Bearer token or an API key (`sk-xxx`) in the `Authorization` header.
+
+### Auth
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/login` | Login (returns JWT) |
-| POST | `/api/v1/auth/refresh` | Refresh tokens |
-| POST | `/api/v1/auth/logout` | Revoke refresh token |
-
-Supports both JWT Bearer tokens and API Keys (`sk-xxx`).
+| ------ | -------- | ----------- |
+| POST | `/api/v1/auth/login` | Login with username/password. Returns access and refresh tokens. |
+| POST | `/api/v1/auth/refresh` | Exchange a refresh token for a new access token. |
+| POST | `/api/v1/auth/logout` | Revoke the current refresh token. |
 
 ### Documents
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/documents` | Upload document |
-| GET | `/api/v1/documents` | List documents |
-| GET | `/api/v1/documents/{id}` | Get document |
-| PATCH | `/api/v1/documents/{id}` | Update title |
-| DELETE | `/api/v1/documents/{id}` | Delete document |
-| POST | `/api/v1/documents/{id}/retry` | Retry failed processing |
-| GET | `/api/v1/documents/search?q=` | Full-text search |
+| ------ | -------- | ----------- |
+| POST | `/api/v1/documents` | Upload a document (multipart/form-data). |
+| GET | `/api/v1/documents` | List all documents with pagination. |
+| GET | `/api/v1/documents/{id}` | Get a single document by ID. |
+| PATCH | `/api/v1/documents/{id}` | Update a document's title. |
+| DELETE | `/api/v1/documents/{id}` | Delete a document and its files. |
+| POST | `/api/v1/documents/{id}/retry` | Retry processing for a failed document. |
+| GET | `/api/v1/documents/search?q=` | Full-text search across document content. |
 
-### Files (authenticated)
+### Files
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/files/{id}/original` | Download original file |
-| GET | `/api/v1/files/{id}/thumbnail` | Get thumbnail |
+| ------ | -------- | ----------- |
+| GET | `/api/v1/files/{id}/original` | Download the original uploaded file. |
+| GET | `/api/v1/files/{id}/thumbnail` | Get the document thumbnail image. |
 
 ### API Keys
 
 | Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/v1/api-keys` | List keys |
-| POST | `/api/v1/api-keys` | Create key |
-| DELETE | `/api/v1/api-keys/{id}` | Delete key |
+| ------ | -------- | ----------- |
+| GET | `/api/v1/api-keys` | List all API keys for the current user. |
+| POST | `/api/v1/api-keys` | Create a new API key. Returns the key once. |
+| DELETE | `/api/v1/api-keys/{id}` | Delete an API key. |
 
-### Reserved (not yet implemented)
+### Admin
 
-| Method | Endpoint | Response |
-|--------|----------|----------|
-| GET | `/api/v1/chat/` | `{"code": 5010, "message": "LLM integration is not available yet."}` |
-| GET | `/api/v1/milvus/status` | `{"code": 0, "data": {"status": "not_configured"}}` |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET | `/api/v1/health` | Health check. Returns service status. |
 
-## Tech Stack
+### Dashboard
 
-| Layer | Technology |
-|-------|-----------|
-| Frontend | Vue 3, Vite, Pinia, Vue Router |
-| Backend | FastAPI, SQLAlchemy, Pydantic |
-| Database | SQLite (WAL mode) |
-| Migrations | Alembic |
-| Auth | JWT (HS256) + API Key (SHA256) |
-| File Processing | PyMuPDF (PDF), python-docx (DOCX), Pillow (images) |
-| Search | SQLite FTS5 |
+| Method | Endpoint | Description |
+| ------ | -------- | ----------- |
+| GET | `/api/v1/dashboard/stats` | Aggregate statistics (document count, storage used, etc.). |
+| GET | `/api/v1/dashboard/recent` | Most recently uploaded documents. |
+| GET | `/api/v1/dashboard/top` | Most viewed or accessed documents. |
 
 ## Project Structure
 
 ```
 ├── backend/
-│   ├── main.py              # FastAPI app entry
-│   ├── config.py            # Environment config
-│   ├── database.py          # SQLAlchemy setup
-│   ├── models/              # ORM models
-│   ├── schemas/             # Pydantic schemas
-│   ├── routers/             # API endpoints
-│   ├── services/            # Business logic
-│   ├── middleware/           # Auth, rate limiting
-│   ├── utils/               # JWT, logging, response helpers
-│   └── exceptions/          # Error handling
+│   ├── main.py              # FastAPI app entry point
+│   ├── config.py            # Environment variable loading
+│   ├── database.py          # SQLAlchemy engine and session
+│   ├── celery_app.py        # Celery task queue configuration
+│   ├── tasks.py             # Async task definitions
+│   ├── models/              # SQLAlchemy ORM models
+│   ├── schemas/             # Pydantic request/response schemas
+│   ├── routers/             # API endpoint definitions
+│   ├── services/            # Business logic layer
+│   ├── middleware/           # Auth, rate limiting, logging
+│   ├── utils/               # JWT helpers, logging, response formatting
+│   └── exceptions/          # Custom error classes and handlers
 ├── frontend/
 │   ├── src/
-│   │   ├── api/             # Axios HTTP client
-│   │   ├── stores/          # Pinia state
-│   │   ├── router/          # Vue Router
-│   │   ├── views/           # Page components
-│   │   └── components/      # Shared components
+│   │   ├── api/             # Axios HTTP client and interceptors
+│   │   ├── stores/          # Pinia state management
+│   │   ├── router/          # Vue Router configuration
+│   │   ├── views/           # Page-level components
+│   │   └── components/      # Reusable UI components
 │   └── vite.config.js
-├── alembic/                 # DB migrations
-├── docs/DEVELOPMENT.md      # Technical spec
-├── nginx.conf               # Production config
-├── requirements.txt
-└── run.sh                   # One-click start
+├── alembic/                 # Database migration scripts
+├── tests/                   # Test suite
+├── docs/                    # Additional documentation
+├── nginx.conf               # Production Nginx configuration
+├── requirements.txt         # Python dependencies
+└── run.sh                   # One-click start script
 ```
-
-## Environment Variables
-
-| Variable | Required | Default | Description |
-|----------|----------|---------|-------------|
-| `JWT_SECRET_KEY` | Yes | — | JWT signing key (>= 32 chars) |
-| `ADMIN_PASSWORD` | Yes | — | Initial admin password |
-| `DATABASE_URL` | No | `sqlite:///./data/app.db` | Database URL |
-| `ADMIN_USERNAME` | No | `admin` | Admin username |
-| `STORAGE_PATH` | No | `./storage` | File storage root |
-| `MAX_UPLOAD_SIZE_MB` | No | `50` | Max upload size (MB) |
-| `LOG_LEVEL` | No | `INFO` | Log level |
-| `CORS_ORIGINS` | No | `http://localhost:5173` | CORS origins |
-| `RATE_LIMIT_LOGIN` | No | `5` | Login rate limit/min/IP |
 
 ## Deployment
 
 ### Development
 
+Run the backend and frontend separately for hot-reload during development.
+
 ```bash
-# Terminal 1: Backend
+# Terminal 1: Backend with auto-reload
 bash run.sh
 
-# Terminal 2: Frontend (hot reload)
+# Terminal 2: Frontend dev server (hot reload on port 5173)
 cd frontend && npm run dev
 ```
 
-### Production (with Nginx)
+### Production with Nginx
+
+Build the frontend and run behind Nginx as a reverse proxy.
 
 ```bash
-# Build and start
+# Build everything and start the backend
 bash run.sh
 
-# Configure Nginx
+# Set up Nginx
 sudo cp nginx.conf /etc/nginx/sites-available/boke
 sudo ln -s /etc/nginx/sites-available/boke /etc/nginx/sites-enabled/
 sudo nginx -t && sudo systemctl reload nginx
 ```
+
+The Nginx config serves the Vue 3 static build, proxies `/api/*` requests to the FastAPI backend on port 8000, and serves uploaded files from `/storage/*`.
+
+## Development Guide
+
+### Running Tests
+
+```bash
+# Install test dependencies (included in requirements.txt)
+pip install -r requirements.txt
+
+# Run the full test suite
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=backend --cov-report=term-missing
+```
+
+### Database Migrations
+
+Alembic manages schema migrations. After changing models in `backend/models/`, generate and apply a migration:
+
+```bash
+# Generate a new migration
+alembic revision --autogenerate -m "describe your change"
+
+# Apply pending migrations
+alembic upgrade head
+
+# Roll back one step
+alembic downgrade -1
+```
+
+### Adding a New API Endpoint
+
+1. Define the Pydantic schema in `backend/schemas/`
+2. Add the ORM model (if needed) in `backend/models/`
+3. Write the business logic in `backend/services/`
+4. Create the route in `backend/routers/`
+5. Register the router in `backend/main.py`
 
 ## License
 
