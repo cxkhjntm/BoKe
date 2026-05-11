@@ -1,6 +1,6 @@
 import json
 
-from datetime import datetime
+from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -74,7 +74,17 @@ async def post_message(
         db.commit()
         db.refresh(session)
 
-    # 5. Read max_rounds
+    # 5. Extract config values BEFORE the async generator to avoid detached instance error.
+    #    After db.commit(), SQLAlchemy expires all ORM objects (expire_on_commit=True default).
+    #    Accessing config.api_key inside the generator would trigger a lazy-refresh on a
+    #    potentially-closed session, causing "Instance is not bound to a Session" error.
+    llm_config = SimpleNamespace(
+        api_key=config.api_key,
+        base_url=config.base_url,
+        model=config.model,
+    )
+
+    # 6. Read max_rounds
     max_rounds = current_user.max_rounds or 0
 
     async def event_generator():
@@ -85,7 +95,7 @@ async def post_message(
         try:
             full_content = ""
             async for delta in stream_chat_session(
-                current_user.id, session_id, body.content, config, max_rounds
+                current_user.id, session_id, body.content, llm_config, max_rounds
             ):
                 full_content += delta
                 yield {
@@ -96,8 +106,6 @@ async def post_message(
                 "event": "finish",
                 "data": json.dumps({"type": "finish", "content": full_content}),
             }
-            session.updated_at = datetime.utcnow()
-            db.commit()
         except Exception as e:
             logger.exception("Chat stream error")
             yield {

@@ -1,6 +1,9 @@
+from datetime import datetime
+
 from backend.database import SessionLocal
 from backend.models.embedding_config import EmbeddingConfig
 from backend.models.rag_config import RAGConfig
+from backend.models.chat_session import ChatSession
 from backend.services.rag_service import query_context
 from backend.services.chat_storage import load_messages, save_messages, trim_messages
 from backend.services.llm_client import stream_llm_response
@@ -105,3 +108,22 @@ async def stream_chat_session(
     messages.append({"role": "assistant", "content": full_reply})
     messages = trim_messages(messages, max_rounds)
     save_messages(user_id, session_id, messages)
+
+    _update_session_timestamp(user_id, session_id)
+
+
+def _update_session_timestamp(user_id: int, session_id: str):
+    db = SessionLocal()
+    try:
+        session = (
+            db.query(ChatSession)
+            .filter(ChatSession.session_id == session_id, ChatSession.user_id == user_id)
+            .first()
+        )
+        if session:
+            session.updated_at = datetime.utcnow()
+            db.commit()
+    except Exception:
+        logger.warning("Failed to update session timestamp for %s", session_id, exc_info=True)
+    finally:
+        db.close()
