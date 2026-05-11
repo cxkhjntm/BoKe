@@ -13,7 +13,7 @@ from backend.schemas.rag import (
 )
 from backend.services import rag_service
 from backend.utils.response import ok
-from backend.utils.crypto_utils import encrypt_api_key
+from backend.utils.crypto_utils import encrypt_api_key, decrypt_api_key
 
 router = APIRouter(prefix="/api/v1/rag", tags=["RAG Config"])
 
@@ -21,9 +21,15 @@ router = APIRouter(prefix="/api/v1/rag", tags=["RAG Config"])
 def _mask_api_key(key: str | None) -> str | None:
     if not key:
         return key
-    if len(key) < 12:
-        return "***"
-    return key[:8] + "***" + key[-4:]
+    try:
+        decrypted = decrypt_api_key(key)
+        if len(decrypted) < 12:
+            return "***"
+        return decrypted[:8] + "***" + decrypted[-4:]
+    except Exception:
+        if len(key) < 12:
+            return "***"
+        return key[:8] + "***" + key[-4:]
 
 
 def _embedding_to_out(config: EmbeddingConfig) -> dict:
@@ -57,7 +63,11 @@ def upsert_embedding_config(
     db: Session = Depends(get_db),
 ):
     config = db.query(EmbeddingConfig).filter(EmbeddingConfig.user_id == user.id).first()
-    encrypted_key = encrypt_api_key(body.api_key)
+    if config and "***" in body.api_key:
+        encrypted_key = config.api_key
+    else:
+        encrypted_key = encrypt_api_key(body.api_key)
+        
     if config:
         config.api_key = encrypted_key
         config.base_url = body.base_url
@@ -81,9 +91,16 @@ def upsert_embedding_config(
 def test_embedding_connection(
     body: EmbeddingConfigCreate,
     user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
+    api_key_to_test = body.api_key
+    if "***" in api_key_to_test:
+        config = db.query(EmbeddingConfig).filter(EmbeddingConfig.user_id == user.id).first()
+        if config:
+            api_key_to_test = decrypt_api_key(config.api_key)
+            
     result = rag_service.test_embedding_connection(
-        api_key=body.api_key,
+        api_key=api_key_to_test,
         base_url=body.base_url,
         model_name=body.model_name,
         vector_dimension=body.vector_dimension,

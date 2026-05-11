@@ -25,7 +25,7 @@ def _is_valid_url(url: str) -> bool:
 
 class LLMConfigCreate(BaseModel):
     provider: str
-    api_key: str = Field(..., min_length=10)
+    api_key: str = ""
     base_url: str = ""
     model: str = Field(..., min_length=1)
 

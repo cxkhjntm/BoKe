@@ -215,10 +215,6 @@ watch(() => props.activeConfig, (cfg) => {
 
 function handleSave() {
   error.value = ''
-  if (!form.value.api_key.trim()) {
-    error.value = 'API Key 不能为空'
-    return
-  }
   if (!form.value.model.trim()) {
     error.value = 'Model 不能为空'
     return
@@ -227,6 +223,10 @@ function handleSave() {
 }
 
 function handleActivate() {
+  if (!currentConfig.value) {
+    error.value = '配置尚未保存，无法设为当前。请先点击保存'
+    return
+  }
   emit('activate', form.value.provider)
 }
 

@@ -1,3 +1,9 @@
+import sys
+import os
+
+# 将项目根目录（alembic 所在目录的上一层）添加到 Python 路径
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool

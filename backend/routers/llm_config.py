@@ -15,9 +15,15 @@ router = APIRouter(prefix="/api/v1/llm-config", tags=["LLM Config"])
 
 
 def _mask_api_key(key: str) -> str:
-    if len(key) < 12:
-        return "***"
-    return key[:8] + "***" + key[-4:]
+    try:
+        decrypted = decrypt_api_key(key)
+        if len(decrypted) < 12:
+            return "***"
+        return decrypted[:8] + "***" + decrypted[-4:]
+    except Exception:
+        if len(key) < 12:
+            return "***"
+        return key[:8] + "***" + key[-4:]
 
 
 def _to_out(config: LLMConfig) -> dict:
@@ -73,6 +79,10 @@ def upsert_llm_config(
     
     base_url = LLM_PROVIDER_DEFAULTS.get(body.provider, body.base_url)
     
+    active_exists = db.query(LLMConfig).filter(
+        LLMConfig.user_id == user.id, LLMConfig.is_active == 1
+    ).first()
+    
     # Check if API key is masked (contains ***), if so keep the existing encrypted key
     if config and "***" in body.api_key:
         encrypted_key = config.api_key
@@ -83,6 +93,8 @@ def upsert_llm_config(
         config.api_key = encrypted_key
         config.base_url = base_url
         config.model = body.model
+        if not active_exists:
+            config.is_active = 1
     else:
         config = LLMConfig(
             user_id=user.id,
@@ -90,7 +102,7 @@ def upsert_llm_config(
             api_key=encrypted_key,
             base_url=base_url,
             model=body.model,
-            is_active=0,
+            is_active=1 if not active_exists else 0,
         )
         db.add(config)
     db.commit()

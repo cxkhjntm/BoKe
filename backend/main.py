@@ -72,11 +72,32 @@ def _run_migrations():
 
 
 def _setup_fts5():
-    """Create FTS5 virtual table and triggers if they don't exist."""
+    """Create FTS5 virtual table and triggers if they don't exist, and heal them if broken."""
     from sqlalchemy import text
 
     db = SessionLocal()
     try:
+        # First, attempt a read to see if fts is broken
+        rebuild_needed = False
+        try:
+            db.execute(text("SELECT 1 FROM documents_fts LIMIT 1"))
+        except Exception:
+            # If it fails, forcefully drop FTS and triggers to rebuild
+            logger.info("FTS5 table missing or broken, dropping triggers and shadow tables to rebuild...")
+            rebuild_needed = True
+            db.execute(text("DROP TRIGGER IF EXISTS documents_ai"))
+            db.execute(text("DROP TRIGGER IF EXISTS documents_ad"))
+            db.execute(text("DROP TRIGGER IF EXISTS documents_au"))
+            db.execute(text("PRAGMA writable_schema = 1"))
+            db.execute(text("DELETE FROM sqlite_master WHERE name = 'documents_fts' OR name LIKE 'documents_fts_%'"))
+            db.execute(text("PRAGMA writable_schema = 0"))
+            db.execute(text("DROP TABLE IF EXISTS documents_fts_idx"))
+            db.execute(text("DROP TABLE IF EXISTS documents_fts_config"))
+            db.execute(text("DROP TABLE IF EXISTS documents_fts_data"))
+            db.execute(text("DROP TABLE IF EXISTS documents_fts_content"))
+            db.execute(text("DROP TABLE IF EXISTS documents_fts_docsize"))
+            db.commit()
+
         # Create FTS5 virtual table
         db.execute(text("""
             CREATE VIRTUAL TABLE IF NOT EXISTS documents_fts USING fts5(
@@ -114,8 +135,12 @@ def _setup_fts5():
         for trigger_sql in triggers:
             db.execute(text(trigger_sql))
 
+        if rebuild_needed:
+            db.execute(text("INSERT INTO documents_fts(documents_fts) VALUES('rebuild')"))
+
         db.commit()
         logger.info("FTS5 virtual table and triggers verified.")
+
     except Exception as e:
         logger.error("Failed to setup FTS5: %s", e)
         db.rollback()
