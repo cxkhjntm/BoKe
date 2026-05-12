@@ -192,6 +192,17 @@ def upload_background_multi(
     content = file.file.read()
     _validate_image(file, content)
 
+    # Convert PNG to JPEG for better compression (backgrounds don't need transparency)
+    ext = Path(file.filename).suffix.lower()
+    if ext == ".png":
+        img = Image.open(io.BytesIO(content))
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=85)
+        content = buf.getvalue()
+        file.filename = Path(file.filename).stem + ".jpg"
+
     relative_path = file_service.save_file(current_user.id, file.filename, content, "profile")
 
     bg = UserBackground(
