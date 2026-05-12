@@ -1,7 +1,6 @@
 import io
 from pathlib import Path
 
-import magic
 from fastapi import APIRouter, Depends, File, UploadFile
 from PIL import Image
 from sqlalchemy.orm import Session
@@ -20,12 +19,19 @@ from backend.exceptions.handlers import AppException
 logger = get_logger("routers.profile")
 router = APIRouter(prefix="/api/v1/profile", tags=["profile"])
 
-IMAGE_MIME_WHITELIST = {
-    "png": ["image/png"],
-    "jpg": ["image/jpeg"],
-    "jpeg": ["image/jpeg"],
-    "webp": ["image/webp"],
-    "gif": ["image/gif"],
+PILLOW_FORMAT_TO_MIME = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+    "WEBP": "image/webp",
+    "GIF": "image/gif",
+}
+
+EXT_TO_MIME = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
+    "webp": "image/webp",
+    "gif": "image/gif",
 }
 
 MAX_BACKGROUNDS = 10
@@ -43,16 +49,27 @@ def _validate_image(file: UploadFile, content: bytes) -> str:
             status_code=400,
         )
 
-    detected_mime = magic.from_buffer(content, mime=True)
-    allowed_mimes = IMAGE_MIME_WHITELIST.get(ext, [])
-    if detected_mime not in allowed_mimes:
+    # 使用Pillow检测图片格式
+    img = Image.open(io.BytesIO(content))
+    img_format = img.format
+    detected_mime = PILLOW_FORMAT_TO_MIME.get(img_format)
+    if not detected_mime:
+        raise AppException(
+            code=4011,
+            message=f"Unsupported image format: {img_format}",
+            status_code=400,
+        )
+
+    # 检查扩展名和实际内容是否匹配
+    expected_mime = EXT_TO_MIME.get(ext)
+    if expected_mime and detected_mime != expected_mime:
         raise AppException(
             code=4011,
             message=f"File content does not match expected image type. Detected: {detected_mime}",
             status_code=400,
         )
 
-    img = Image.open(io.BytesIO(content))
+    # 验证图片完整性
     img.verify()
 
     return ext

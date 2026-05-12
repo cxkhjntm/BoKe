@@ -1,7 +1,9 @@
+import io
 from pathlib import Path
 
 import magic
 from fastapi import APIRouter, Depends, File, Form, UploadFile, Query
+from PIL import Image
 from sqlalchemy.orm import Session
 
 from backend.database import get_db
@@ -45,17 +47,24 @@ def _dispatch_processing(document_id: int, db: Session, doc) -> None:
             doc.error_message = f"Processing failed: {sync_err}"
             db.commit()
 
-# MIME type whitelist (extension -> allowed MIME patterns)
 MIME_WHITELIST = {
     "pdf": ["application/pdf"],
     "docx": [
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/zip",  # docx is a zip archive
+        "application/zip",
     ],
     "md": ["text/markdown", "text/plain", "application/octet-stream"],
-    "png": ["image/png"],
-    "jpg": ["image/jpeg"],
-    "jpeg": ["image/jpeg"],
+}
+
+PILLOW_FORMAT_TO_MIME = {
+    "PNG": "image/png",
+    "JPEG": "image/jpeg",
+}
+
+EXT_TO_MIME = {
+    "png": "image/png",
+    "jpg": "image/jpeg",
+    "jpeg": "image/jpeg",
 }
 
 
@@ -66,15 +75,35 @@ def _validate_file(file: UploadFile, content: bytes) -> str:
     if ext not in ALLOWED_EXTENSIONS:
         raise AppException(code=4009, message=f"File type '.{ext}' is not allowed", status_code=400)
 
-    # Layer 2: MIME type detection (python-magic)
-    detected_mime = magic.from_buffer(content, mime=True)
-    allowed_mimes = MIME_WHITELIST.get(ext, [])
-    if detected_mime not in allowed_mimes:
-        raise AppException(
-            code=4011,
-            message=f"File content does not match expected type. Detected: {detected_mime}",
-            status_code=400,
-        )
+    # Layer 2: MIME type detection
+    if ext in EXT_TO_MIME:
+        # For image files, use Pillow for reliable detection (works on Windows)
+        img = Image.open(io.BytesIO(content))
+        img_format = img.format
+        detected_mime = PILLOW_FORMAT_TO_MIME.get(img_format)
+        if not detected_mime:
+            raise AppException(
+                code=4011,
+                message=f"Unsupported image format: {img_format}",
+                status_code=400,
+            )
+        expected_mime = EXT_TO_MIME.get(ext)
+        if expected_mime and detected_mime != expected_mime:
+            raise AppException(
+                code=4011,
+                message=f"File content does not match expected type. Detected: {detected_mime}",
+                status_code=400,
+            )
+    else:
+        # For non-image files, use python-magic
+        detected_mime = magic.from_buffer(content, mime=True)
+        allowed_mimes = MIME_WHITELIST.get(ext, [])
+        if detected_mime not in allowed_mimes:
+            raise AppException(
+                code=4011,
+                message=f"File content does not match expected type. Detected: {detected_mime}",
+                status_code=400,
+            )
 
     # Layer 3: Format validation
     _validate_format(ext, content)
