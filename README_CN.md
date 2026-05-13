@@ -66,6 +66,21 @@
 | LLM 集成 | OpenAI 兼容 API (可配置) |
 | RAG | ChromaDB + langchain-text-splitters |
 
+## 环境要求
+
+| 依赖 | 版本 | 必填 | 说明 |
+|------|------|------|------|
+| Python | 3.11+ | 是 | 后端运行环境 |
+| Node.js | 18+ | 是 | 前端构建 |
+| Redis | 6.0+ | 否 | 可选，用于异步任务队列（Celery） |
+| Nginx | 1.18+ | 否 | 生产环境推荐 |
+| SQLite | 3.35+ | 是 | Python 自带，需支持 WAL 模式 |
+
+**系统依赖（Linux）：**
+- `build-essential`（Ubuntu）或 `gcc gcc-c++ make`（CentOS）
+- `libmagic-dev`（Ubuntu）或 `file-devel`（CentOS），用于文件类型检测
+- `curl`、`wget`、`git` 等基础工具
+
 ## 快速开始
 
 ### 前置要求
@@ -77,8 +92,8 @@
 ### 1. 克隆项目并配置
 
 ```bash
-git clone https://github.com/cxkhjntm/claude_code.git
-cd claude_code
+git clone https://github.com/cxkhjntm/BoKe.git
+cd BoKe
 
 # 从模板创建 .env 文件
 cp .env.example .env
@@ -239,7 +254,23 @@ cd frontend && npm run dev
 
 前端开发服务器默认运行在 http://localhost:5173，会自动代理 API 请求到后端 8000 端口。
 
-### 生产环境（Nginx）
+### 生产环境部署
+
+生产环境部署建议参考详细的部署手册：
+
+📖 **[DEPLOYMENT.md](./DEPLOYMENT.md)** - 完整部署操作手册
+
+部署手册涵盖以下内容：
+- 服务器基础环境准备（Ubuntu/CentOS/Debian）
+- Python 3.11+ 安装（源码编译）
+- Node.js 18+ 安装
+- Redis 安装与配置
+- Nginx 反向代理配置
+- Systemd 服务管理
+- 防火墙配置
+- SSL/HTTPS 配置（可选）
+
+**快速生产部署：**
 
 ```bash
 # 构建并启动
@@ -257,6 +288,42 @@ sudo nginx -t && sudo systemctl reload nginx
 - `/api/*` 请求反向代理到 FastAPI 后端
 - `/storage/*` 请求反向代理到文件服务
 - HTTPS 终止（需自行配置证书）
+
+## 更新说明
+
+### 一键更新
+
+项目提供了一键更新脚本：
+
+```bash
+cd ~/BoKe
+chmod +x update.sh
+bash update.sh
+```
+
+脚本会自动完成以下操作：
+- 停止服务
+- 备份数据库
+- 拉取最新代码
+- 更新 Python 依赖
+- 运行数据库迁移
+- 构建前端
+- 重启服务
+- 健康检查验证
+
+### 手动更新
+
+如果更新脚本执行失败或需要更精细的控制，请参考：
+
+📖 **[UPDATE.md](./UPDATE.md)** - 详细更新指南
+
+更新指南涵盖：
+- 更新前准备与备份
+- 手动更新详细步骤
+- 版本间重大变更说明
+- 更新后验证
+- 回滚操作
+- 常见问题排查
 
 ## 开发指南
 

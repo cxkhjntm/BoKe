@@ -65,6 +65,21 @@ A self-hosted research material management system. Upload documents, search acro
 | RAG              | ChromaDB + langchain-text-splitters                 |
 | LLM Integration  | OpenAI-compatible API                               |
 
+## Environment Requirements
+
+| Requirement | Version | Required | Notes |
+|-------------|---------|----------|-------|
+| Python | 3.11+ | Yes | Backend runtime |
+| Node.js | 18+ | Yes | Frontend build |
+| Redis | 6.0+ | No | Optional, for async task queue (Celery) |
+| Nginx | 1.18+ | No | Recommended for production deployment |
+| SQLite | 3.35+ | Yes | Bundled with Python, WAL mode support required |
+
+**System Dependencies (Linux):**
+- `build-essential` (Ubuntu) or `gcc gcc-c++ make` (CentOS)
+- `libmagic-dev` (Ubuntu) or `file-devel` (CentOS) for file type detection
+- `curl`, `wget`, `git` for installation
+
 ## Quick Start
 
 ### Prerequisites
@@ -76,8 +91,8 @@ A self-hosted research material management system. Upload documents, search acro
 ### Install
 
 ```bash
-git clone https://github.com/cxkhjntm/claude_code.git
-cd claude_code
+git clone https://github.com/cxkhjntm/BoKe.git
+cd BoKe
 
 # Create environment file
 cp .env.example .env
@@ -227,9 +242,23 @@ bash run.sh
 cd frontend && npm run dev
 ```
 
-### Production with Nginx
+### Production Deployment
 
-Build the frontend and run behind Nginx as a reverse proxy.
+For production deployment, we recommend following the detailed deployment guide:
+
+📖 **[DEPLOYMENT.md](./DEPLOYMENT.md)** - Complete step-by-step deployment manual
+
+The deployment guide covers:
+- Server environment preparation (Ubuntu/CentOS/Debian)
+- Python 3.11+ installation from source
+- Node.js 18+ installation
+- Redis installation and configuration
+- Nginx reverse proxy setup
+- Systemd service management
+- Firewall configuration
+- SSL/HTTPS setup (optional)
+
+**Quick Production Setup:**
 
 ```bash
 # Build everything and start the backend
@@ -242,6 +271,42 @@ sudo nginx -t && sudo systemctl reload nginx
 ```
 
 The Nginx config serves the Vue 3 static build, proxies `/api/*` requests to the FastAPI backend on port 8000, and serves uploaded files from `/storage/*`.
+
+## Updates
+
+### One-Click Update
+
+The project includes an update script for quick updates:
+
+```bash
+cd ~/BoKe
+chmod +x update.sh
+bash update.sh
+```
+
+The script automatically handles:
+- Stopping services
+- Database backup
+- Pulling latest code
+- Updating Python dependencies
+- Running database migrations
+- Building frontend
+- Restarting services
+- Health check verification
+
+### Manual Update
+
+If the update script fails or you need more control, see:
+
+📖 **[UPDATE.md](./UPDATE.md)** - Detailed manual update guide
+
+The update guide covers:
+- Pre-update preparation and backup
+- Step-by-step manual update process
+- Version-specific migration notes
+- Post-update verification
+- Rollback procedures
+- Troubleshooting common issues
 
 ## Development Guide
 
