@@ -73,106 +73,30 @@ df -h ~/BoKe
 
 ## 快速更新（一键脚本）
 
-将以下脚本保存为 `update.sh`，执行 `bash update.sh` 即可完成更新：
-
-```bash
-#!/usr/bin/env bash
-set -eo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-cd "$SCRIPT_DIR"
-
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
-
-info()  { echo -e "${GREEN}[INFO]${NC} $*"; }
-warn()  { echo -e "${YELLOW}[WARN]${NC} $*"; }
-error() { echo -e "${RED}[ERROR]${NC} $*"; exit 1; }
-
-PROJECT_DIR="$SCRIPT_DIR"
-VENV_DIR="$PROJECT_DIR/venv"
-
-info "=== BoKe 更新脚本 ==="
-
-# 1. 停止服务
-info "停止服务..."
-sudo systemctl stop boke 2>/dev/null || true
-sudo systemctl stop boke-celery 2>/dev/null || true
-
-# 2. 备份数据库
-info "备份数据库..."
-BACKUP_FILE="data/app.db.backup.$(date +%Y%m%d_%H%M%S)"
-cp data/app.db "$BACKUP_FILE" 2>/dev/null || warn "数据库文件不存在，跳过备份"
-info "数据库已备份到: $BACKUP_FILE"
-
-# 3. 拉取最新代码
-info "拉取最新代码..."
-git fetch origin
-git pull origin main
-
-# 4. 激活虚拟环境
-info "激活虚拟环境..."
-source "$VENV_DIR/bin/activate"
-
-# 5. 更新 Python 依赖
-info "更新 Python 依赖..."
-pip install -q -r requirements.txt
-
-# 6. 运行数据库迁移
-info "运行数据库迁移..."
-set -a
-source .env
-set +a
-alembic upgrade head
-
-# 7. 构建前端
-info "构建前端..."
-cd frontend
-npm install --silent 2>/dev/null
-npm run build
-cd "$PROJECT_DIR"
-
-# 8. 重启服务
-info "重启服务..."
-sudo systemctl daemon-reload
-sudo systemctl start boke
-sudo systemctl start boke-celery 2>/dev/null || true
-
-# 9. 验证服务状态
-info "验证服务状态..."
-sleep 2
-if sudo systemctl is-active --quiet boke; then
-    info "✓ boke 服务已启动"
-else
-    error "✗ boke 服务启动失败，请查看日志: sudo journalctl -u boke -n 50"
-fi
-
-# 10. 测试健康检查
-info "测试健康检查..."
-sleep 1
-HEALTH_RESPONSE=$(curl -s http://localhost:8000/api/v1/health 2>/dev/null || echo "")
-if echo "$HEALTH_RESPONSE" | grep -q '"status":"ok"'; then
-    info "✓ 健康检查通过"
-else
-    warn "✗ 健康检查失败，请手动验证: curl http://localhost:8000/api/v1/health"
-fi
-
-info "=== 更新完成 ==="
-info "当前版本:"
-git log --oneline -1
-info ""
-info "如有问题，请查看日志: sudo journalctl -u boke -f"
-```
-
-**使用方法：**
+项目根目录下提供了 `update.sh` 脚本，执行即可完成更新：
 
 ```bash
 cd ~/BoKe
 chmod +x update.sh
 bash update.sh
 ```
+
+> **脚本与手动步骤的对应关系：**
+> 
+> | 脚本阶段 | 对应手动步骤 | 说明 |
+> |----------|-------------|------|
+> | 阶段 1 | 步骤 1 | 停止服务 |
+> | 阶段 2 | 步骤 2 | 备份数据库 |
+> | 阶段 3 | 步骤 3 | 暂存本地修改 → 拉取代码 → 恢复修改 |
+> | 阶段 4 | 步骤 4 | 更新 Python 依赖 |
+> | 阶段 5 | 步骤 5 | 运行数据库迁移 |
+> | 阶段 6 | 步骤 6 | 构建前端 |
+> | 阶段 7 | 步骤 7+8 | 重载 systemd + 重启服务 |
+> | 阶段 8 | 步骤 9 | 验证服务状态 |
+> 
+> **如果脚本中途失败，错误信息会提示从哪个手动步骤继续操作。**
+> 
+> **如果 `git stash pop` 产生冲突，脚本会停止并提示从手动步骤 3 继续。**
 
 ---
 
@@ -213,9 +137,15 @@ cd ~/BoKe
 echo "当前版本:"
 git log --oneline -1
 
+# 暂存本地修改（如果有）
+git stash push -m "本地临时修改"
+
 # 拉取更新
 git fetch origin
 git pull origin main
+
+# 恢复本地修改
+git stash pop 2>/dev/null || echo "没有暂存的本地修改"
 
 # 查看更新后的版本
 echo "更新后版本:"
@@ -225,6 +155,8 @@ git log --oneline -1
 echo "本次更新内容:"
 git log --oneline origin/main~10..origin/main
 ```
+
+> **注意：** 如果 `git stash pop` 产生冲突，需要手动解决冲突后继续。
 
 ### 步骤 4：更新 Python 依赖
 
@@ -769,4 +701,4 @@ print('FTS5 索引已重建')
 
 ---
 
-*最后更新：2026-05-11*
+*最后更新：2026-05-13*
