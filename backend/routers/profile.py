@@ -192,16 +192,31 @@ def upload_background_multi(
     content = file.file.read()
     _validate_image(file, content)
 
-    # Convert PNG to JPEG for better compression (backgrounds don't need transparency)
-    ext = Path(file.filename).suffix.lower()
-    if ext == ".png":
+    # Completely resize and optimize all incoming background images
+    try:
         img = Image.open(io.BytesIO(content))
+        # Handle EXIF orientation
+        try:
+            from PIL import ImageOps
+            img = ImageOps.exif_transpose(img)
+        except Exception:
+            pass
+
         if img.mode in ("RGBA", "LA", "P"):
             img = img.convert("RGB")
+            
+        # Resize if width is larger than 1920px (Desktop background standard)
+        if img.width > 1920:
+            ratio = 1920.0 / img.width
+            new_h = int(img.height * ratio)
+            img = img.resize((1920, new_h), Image.Resampling.LANCZOS)
+            
         buf = io.BytesIO()
-        img.save(buf, format="JPEG", quality=85)
+        img.save(buf, format="JPEG", quality=82, optimize=True)
         content = buf.getvalue()
         file.filename = Path(file.filename).stem + ".jpg"
+    except Exception as e:
+        logger.warning(f"Failed to optimize background image: {e}")
 
     relative_path = file_service.save_file(current_user.id, file.filename, content, "profile")
 

@@ -141,7 +141,9 @@ let maxRoundsSaveTimer = null
 
 function bgThumbStyle(bg) {
   const hash = bg.image_path ? bg.image_path.split('/').pop().split('.')[0] : bg.id
-  const url = getBackgroundUrlById(bg.id, authStore.accessToken, hash)
+  // Use the new thumb endpoint
+  const baseURL = import.meta.env.VITE_API_URL || ''
+  const url = `${baseURL}/api/v1/files/profile/backgrounds/${bg.id}/thumb?token=${authStore.accessToken}&v=${hash}`
   return {
     backgroundImage: `url(${url})`,
     backgroundSize: 'cover',

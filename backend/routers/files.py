@@ -4,8 +4,10 @@ from typing import Optional
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Query, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 from sqlalchemy.orm import Session
+import io
+from PIL import Image
 
 from backend.database import get_db
 from backend.middleware.auth import get_current_user, get_current_user_optional, authenticate_from_token
@@ -155,19 +157,14 @@ async def serve_avatar(
     if not abs_path.exists():
         raise AppException(code=4004, message="Avatar not found on disk", status_code=404)
 
-    def file_iter():
-        with open(abs_path, "rb") as f:
-            while chunk := f.read(CHUNK_SIZE):
-                yield chunk
-
-    return StreamingResponse(
-        file_iter(),
+    return FileResponse(
+        path=abs_path,
         media_type=_get_mime(abs_path),
+        filename=abs_path.name,
+        content_disposition_type="inline",
         headers={
-            "Content-Disposition": "inline",
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
-        },
+            "Cache-Control": "private, max-age=604800, immutable",
+        }
     )
 
 
@@ -187,19 +184,14 @@ async def serve_background(
     if not abs_path.exists():
         raise AppException(code=4004, message="Background not found on disk", status_code=404)
 
-    def file_iter():
-        with open(abs_path, "rb") as f:
-            while chunk := f.read(CHUNK_SIZE):
-                yield chunk
-
-    return StreamingResponse(
-        file_iter(),
+    return FileResponse(
+        path=abs_path,
         media_type=_get_mime(abs_path),
+        filename=abs_path.name,
+        content_disposition_type="inline",
         headers={
-            "Content-Disposition": "inline",
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
-        },
+            "Cache-Control": "private, max-age=604800, immutable",
+        }
     )
 
 
@@ -224,20 +216,63 @@ async def serve_background_by_id(
     if not abs_path.exists():
         raise AppException(code=4004, message="Background file not found on disk", status_code=404)
 
-    def file_iter():
-        with open(abs_path, "rb") as f:
-            while chunk := f.read(CHUNK_SIZE):
-                yield chunk
-
-    return StreamingResponse(
-        file_iter(),
+    return FileResponse(
+        path=abs_path,
         media_type=_get_mime(abs_path),
+        filename=abs_path.name,
+        content_disposition_type="inline",
         headers={
-            "Content-Disposition": "inline",
-            "Accept-Ranges": "bytes",
-            "Cache-Control": "public, max-age=86400",
-        },
+            "Cache-Control": "private, max-age=604800, immutable",
+        }
     )
+
+
+@router.get("/profile/backgrounds/{bg_id}/thumb")
+async def serve_background_thumb_by_id(
+    bg_id: int,
+    request: Request,
+    token: Optional[str] = Query(None, description="JWT token for img auth"),
+    current_user: Optional[User] = Depends(get_current_user_optional),
+    db: Session = Depends(get_db),
+):
+    user = _resolve_user(token, current_user, db, request)
+
+    bg = db.query(UserBackground).filter(
+        UserBackground.id == bg_id,
+        UserBackground.user_id == user.id,
+    ).first()
+    if not bg:
+        raise AppException(code=4004, message="Background not found", status_code=404)
+
+    abs_path = file_service.get_file_path(bg.image_path)
+    if not abs_path.exists():
+        raise AppException(code=4004, message="Background file not found on disk", status_code=404)
+
+    # Generate thumb path
+    thumb_path = abs_path.parent / f"{abs_path.stem}_thumb.jpg"
+    
+    if not thumb_path.exists():
+        try:
+            img = Image.open(abs_path)
+            if img.mode in ("RGBA", "LA", "P"):
+                img = img.convert("RGB")
+            img.thumbnail((320, 320), Image.Resampling.LANCZOS)
+            img.save(thumb_path, format="JPEG", quality=75, optimize=True)
+        except Exception as e:
+            logger.warning(f"Failed to generate thumbnail for {abs_path}: {e}")
+            thumb_path = abs_path # Fallback to original
+
+    return FileResponse(
+        path=thumb_path,
+        media_type="image/jpeg" if thumb_path != abs_path else _get_mime(abs_path),
+        filename=thumb_path.name,
+        content_disposition_type="inline",
+        headers={
+            "Cache-Control": "private, max-age=604800, immutable",
+        }
+    )
+
+
 
 
 @router.get("/profile/background")

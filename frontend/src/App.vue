@@ -20,12 +20,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useAuthStore } from './stores/auth'
 import AppNavbar from './components/AppNavbar.vue'
 
 const authStore = useAuthStore()
 const activeIndex = ref(0)
+const loadedUrls = reactive(new Set())
 let timer = null
 
 const appStyle = computed(() => ({
@@ -33,11 +34,24 @@ const appStyle = computed(() => ({
   minHeight: '100vh',
 }))
 
+function preloadImage(url) {
+  if (!url || loadedUrls.has(url)) return
+  const img = new Image()
+  img.onload = () => {
+    loadedUrls.add(url)
+  }
+  img.src = url
+}
+
 function bgLayerStyle(idx) {
+  const url = authStore.backgroundUrls[idx]
+  const isLoaded = loadedUrls.has(url)
+  
+  // Only attempt to show if it's the active one, or if we're preloading
   return {
     position: 'fixed',
     inset: '0',
-    backgroundImage: `url(${authStore.backgroundUrls[idx]})`,
+    backgroundImage: isLoaded ? `url(${url})` : 'none',
     backgroundSize: 'cover',
     backgroundPosition: 'center',
     opacity: idx === activeIndex.value ? authStore.backgroundOpacity : 0,
@@ -49,12 +63,24 @@ function bgLayerStyle(idx) {
 function startCarousel() {
   stopCarousel()
   const urls = authStore.backgroundUrls
+  if (urls.length === 0) return
+  
+  // Preload current immediately
+  preloadImage(urls[activeIndex.value])
+  // Preload next
+  if (urls.length > 1) {
+    const nextIdx = (activeIndex.value + 1) % urls.length
+    preloadImage(urls[nextIdx])
+  }
+
   if (urls.length <= 1) {
-    activeIndex.value = 0
     return
   }
+  
   timer = setInterval(() => {
-    activeIndex.value = (activeIndex.value + 1) % authStore.backgroundUrls.length
+    activeIndex.value = (activeIndex.value + 1) % urls.length
+    const nextIdx = (activeIndex.value + 1) % urls.length
+    preloadImage(urls[nextIdx])
   }, authStore.carouselInterval * 1000)
 }
 
