@@ -103,6 +103,11 @@ export async function fetchFileBlobUrl(docId, type = 'original') {
   return url
 }
 
+export function getFileDirectUrl(docId, token) {
+  const baseURL = import.meta.env.VITE_API_URL || ''
+  return `${baseURL}/api/v1/files/${docId}/original?token=${encodeURIComponent(token)}`
+}
+
 // --- Auth ---
 export const login = (username, password) =>
   api.post('/auth/login', { username, password })

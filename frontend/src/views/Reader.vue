@@ -60,8 +60,7 @@
 
         <!-- PDF viewer -->
         <div v-if="doc.file_type === 'pdf' && doc.status === 'ready'" class="pdf-viewer">
-          <div v-if="fileLoading" class="empty"><span class="spinner"></span> 加载 PDF...</div>
-          <iframe v-else-if="fileBlobUrl" :src="fileBlobUrl" class="pdf-frame" title="PDF Viewer"></iframe>
+          <PdfViewer :url="docUrl" />
         </div>
 
         <!-- Image viewer -->
@@ -124,15 +123,26 @@
 </template>
 
 <script setup>
-import { ref, watch, onBeforeUnmount, onMounted } from 'vue'
+import { ref, watch, onBeforeUnmount, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getDocument, getDocuments, retryDocument, reprocessDocument, fetchFileBlobUrl, revokeBlobUrlFromCache, getDocxImageUrl } from '../api'
+import { getDocument, getDocuments, retryDocument, reprocessDocument, fetchFileBlobUrl, revokeBlobUrlFromCache, getDocxImageUrl, getFileDirectUrl } from '../api'
 import { formatDate, formatSize, statusLabel } from '../utils/format'
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
+import { useAuthStore } from '../stores/auth'
+import PdfViewer from '../components/PdfViewer.vue'
+
+const authStore = useAuthStore()
 
 const route = useRoute()
 const router = useRouter()
+
+const isMobile = ref(/Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent))
+
+const docUrl = computed(() => {
+  if (!doc.value) return ''
+  return getFileDirectUrl(doc.value.id, authStore.accessToken)
+})
 
 const doc = ref(null)
 const loading = ref(true)
@@ -259,7 +269,7 @@ function revokeBlobUrl() {
 
 async function loadFileBlob() {
   if (!doc.value || doc.value.status !== 'ready') return
-  if (!['pdf', 'png', 'jpg', 'jpeg'].includes(doc.value.file_type)) return
+  if (!['png', 'jpg', 'jpeg'].includes(doc.value.file_type)) return
 
   fileLoading.value = true
   try {
@@ -316,6 +326,10 @@ async function fetchDoc() {
 
 async function openOriginal() {
   if (!doc.value) return
+  if (doc.value.file_type === 'pdf') {
+     window.open(docUrl.value, '_blank')
+     return;
+  }
   fileLoading.value = true
   try {
     const url = await fetchFileBlobUrl(route.params.id, 'original')

@@ -97,7 +97,7 @@ async def serve_original(
             "Content-Disposition": _content_disposition(doc.original_filename),
             "Accept-Ranges": "bytes",
             "Content-Length": str(file_size),
-            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Cache-Control": "private, max-age=3600",
         },
     )
 
@@ -136,7 +136,7 @@ def _serve_range(abs_path: Path, file_size: int, mime_type: str, range_header: s
             "Accept-Ranges": "bytes",
             "Content-Range": f"bytes {start}-{end}/{file_size}",
             "Content-Length": str(content_length),
-            "Cache-Control": "no-store, no-cache, must-revalidate",
+            "Cache-Control": "private, max-age=3600",
         },
     )
 
