@@ -8,6 +8,10 @@
       {{ error }}
     </div>
 
+    <div class="canvas-wrapper" v-show="!loading && !error">
+      <canvas ref="canvasRef"></canvas>
+    </div>
+
     <div class="pdf-controls" v-if="pdfDoc">
       <button class="btn btn-sm" @click="prevPage" :disabled="pageNum <= 1">上一页</button>
       <span class="page-info">{{ pageNum }} / {{ numPages }}</span>
@@ -19,10 +23,6 @@
       <span class="zoom-info">{{ Math.round(scale * 100) }}%</span>
       <button class="btn btn-sm" @click="zoomIn" :disabled="scale >= 3.0">+</button>
     </div>
-
-    <div class="canvas-wrapper" v-show="!loading && !error">
-      <canvas ref="canvasRef"></canvas>
-    </div>
   </div>
 </template>
 
@@ -30,7 +30,7 @@
 import { ref, onMounted, onUnmounted, watch, shallowRef } from 'vue'
 import * as pdfjsLib from 'pdfjs-dist'
 
-export const props = defineProps({
+const props = defineProps({
   url: {
     type: String,
     required: true
@@ -178,7 +178,7 @@ onUnmounted(() => {
   align-items: center;
   padding: 0.5rem 1rem;
   background: var(--bg-color);
-  border-bottom: 1px solid var(--border);
+  border-top: 1px solid var(--border);
   gap: 0.5rem;
 }
 
